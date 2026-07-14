@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import './legacy.css';
+
+html, body { font-family: 'Inter', system-ui, sans-serif; }
