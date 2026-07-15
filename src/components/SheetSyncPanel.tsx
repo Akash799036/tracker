@@ -5,6 +5,7 @@ import {
   SHEET_SYNC_STORAGE_KEY,
   type AllProjectsData,
   type AllProjectsSheet,
+  type SheetRow,
   type SheetSyncPageKey,
 } from '@/lib/sheetSync';
 
@@ -18,6 +19,23 @@ function loadCached(key: string): AllProjectsData | null {
 
 function persist(key: string, data: AllProjectsData) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+
+// Per-sheet local overrides on top of the read-only synced data.
+// Shape: { [sheetName]: { edits: { [rowIndex]: Partial<SheetRow> }, deletes: number[] } }
+type OverrideMap = Record<string, { edits: Record<number, Record<string, string>>; deletes: number[] }>;
+const OVERRIDES_KEY = (pageKey: string) => `sheet-sync.${pageKey}.overrides.v1`;
+
+function loadOverrides(pageKey: string): OverrideMap {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(OVERRIDES_KEY(pageKey));
+    return raw ? (JSON.parse(raw) as OverrideMap) : {};
+  } catch { return {}; }
+}
+
+function saveOverrides(pageKey: string, map: OverrideMap) {
+  try { localStorage.setItem(OVERRIDES_KEY(pageKey), JSON.stringify(map)); } catch {}
 }
 
 function fmtTime(ts: number) {
@@ -42,6 +60,11 @@ export default function SheetSyncPanel({
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState<OverrideMap>({});
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, string>>({});
+
+  const toStr = (v: unknown) => (v == null ? '' : String(v));
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollBy = (dx: number) => {
@@ -54,8 +77,9 @@ export default function SheetSyncPanel({
       setData(cached);
       setActiveSheet(cached.sheets[0]?.name || '');
     }
+    setOverrides(loadOverrides(pageKey));
     setReady(true);
-  }, [storageKey]);
+  }, [storageKey, pageKey]);
 
   const runSync = useCallback(async () => {
     setBusy(true); setError(null);
@@ -79,14 +103,60 @@ export default function SheetSyncPanel({
     [data, activeSheet]
   );
 
+  const sheetOverride = overrides[activeSheet] || { edits: {}, deletes: [] };
+
+  // Rows with edits applied and deletes filtered out, preserving original indices.
+  const visibleRows = useMemo(() => {
+    if (!sheet) return [] as { row: Record<string, string>; origIdx: number }[];
+    const deletes = new Set(sheetOverride.deletes);
+    return sheet.rows
+      .map((r, i) => ({ row: { ...r, ...(sheetOverride.edits[i] || {}) }, origIdx: i }))
+      .filter(x => !deletes.has(x.origIdx));
+  }, [sheet, sheetOverride]);
+
   const filteredRows = useMemo(() => {
-    if (!sheet) return [];
     const q = query.trim().toLowerCase();
-    if (!q) return sheet.rows;
-    return sheet.rows.filter(r =>
-      Object.values(r).some(v => String(v ?? '').toLowerCase().includes(q))
+    if (!q) return visibleRows;
+    return visibleRows.filter(x =>
+      Object.values(x.row).some(v => String(v ?? '').toLowerCase().includes(q))
     );
-  }, [sheet, query]);
+  }, [visibleRows, query]);
+
+  const beginEdit = (origIdx: number, row: SheetRow) => {
+    setEditingIdx(origIdx);
+    const draft: Record<string, string> = {};
+    for (const k of Object.keys(row)) draft[k] = toStr(row[k]);
+    setEditDraft(draft);
+  };
+  const cancelEdit = () => { setEditingIdx(null); setEditDraft({}); };
+  const saveEdit = (origIdx: number) => {
+    if (!sheet) return;
+    const original = sheet.rows[origIdx] || {};
+    const diff: Record<string, string> = {};
+    for (const h of sheet.headers) {
+      const next = editDraft[h] ?? '';
+      if (String(original[h] ?? '') !== next) diff[h] = next;
+    }
+    const nextMap: OverrideMap = { ...overrides };
+    const prev = nextMap[activeSheet] || { edits: {}, deletes: [] };
+    const edits = { ...prev.edits };
+    if (Object.keys(diff).length === 0) delete edits[origIdx];
+    else edits[origIdx] = { ...(prev.edits[origIdx] || {}), ...diff };
+    nextMap[activeSheet] = { ...prev, edits };
+    setOverrides(nextMap);
+    saveOverrides(pageKey, nextMap);
+    cancelEdit();
+  };
+  const deleteRow = (origIdx: number) => {
+    if (!confirm('Delete this row? (Local only — will not affect Google Sheet.)')) return;
+    const nextMap: OverrideMap = { ...overrides };
+    const prev = nextMap[activeSheet] || { edits: {}, deletes: [] };
+    if (prev.deletes.includes(origIdx)) return;
+    nextMap[activeSheet] = { ...prev, deletes: [...prev.deletes, origIdx] };
+    setOverrides(nextMap);
+    saveOverrides(pageKey, nextMap);
+    if (editingIdx === origIdx) cancelEdit();
+  };
 
   if (!ready) return null;
 
@@ -176,26 +246,55 @@ export default function SheetSyncPanel({
                           {h}
                         </th>
                       ))}
+                      <th className="text-right font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((row, i) => (
-                      <tr key={i} className="odd:bg-white even:bg-slate-50/40 hover:bg-indigo-50/40">
-                        {sheet.headers.map(h => {
-                          const v = row[h];
-                          return (
-                            <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate">
-                              {looksLikeUrl(v)
-                                ? <a href={v} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline break-all">{v}</a>
-                                : (v == null ? '' : String(v))}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                    {filteredRows.map(({ row, origIdx }) => {
+                      const isEditing = editingIdx === origIdx;
+                      return (
+                        <tr key={origIdx} className="odd:bg-white even:bg-slate-50/40 hover:bg-indigo-50/40">
+                          {sheet.headers.map(h => {
+                            const v = row[h];
+                            return (
+                              <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate">
+                                {isEditing ? (
+                                  <input
+                                    value={editDraft[h] ?? ''}
+                                    onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                    className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm"
+                                  />
+                                ) : looksLikeUrl(v)
+                                  ? <a href={v} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline break-all">{v}</a>
+                                  : (v == null ? '' : String(v))}
+                              </td>
+                            );
+                          })}
+                          <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
+                            {isEditing ? (
+                              <>
+                                <button onClick={() => saveEdit(origIdx)}
+                                  className="text-emerald-600 hover:text-emerald-700 text-xs font-medium mr-3">Save</button>
+                                <button onClick={cancelEdit}
+                                  className="text-slate-500 hover:text-slate-700 text-xs font-medium">Cancel</button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => beginEdit(origIdx, row)}
+                                  className="text-indigo-600 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
+                                <button onClick={() => deleteRow(origIdx)}
+                                  className="text-rose-600 hover:text-rose-700 text-xs font-medium">Delete</button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {filteredRows.length === 0 && (
                       <tr>
-                        <td colSpan={sheet.headers.length || 1} className="px-3 py-6 text-center text-slate-500">
+                        <td colSpan={(sheet.headers.length || 1) + 1} className="px-3 py-6 text-center text-slate-500">
                           No matching rows.
                         </td>
                       </tr>

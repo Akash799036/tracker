@@ -64,7 +64,9 @@ export default function ProjectTable({
                 <td className="px-4 py-3 text-slate-600">{fmtDate(p.liveDate)}</td>
                 {extraColumns.map(c => <td key={c.label} className="px-4 py-3 text-slate-600">{c.render(p)}</td>)}
                 {onDelete && (
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <Link href={`/project?id=${encodeURIComponent(p.id)}`}
+                      className="text-indigo-600 hover:text-indigo-700 text-xs font-medium mr-3">Edit</Link>
                     <button onClick={() => { if (confirm(`Delete "${p.projectName}"?`)) onDelete(p.id); }}
                       className="text-rose-600 hover:text-rose-700 text-xs font-medium">Delete</button>
                   </td>
