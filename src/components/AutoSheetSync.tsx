@@ -13,6 +13,8 @@ const PAGE_KEYS: SheetSyncPageKey[] = [
   'dashboard',
 ];
 
+export const SHEET_SYNC_DONE_EVENT = 'sheet-sync:all-done';
+
 async function syncOne(pageKey: SheetSyncPageKey) {
   try {
     const res = await fetch(`/api/sheet-sync/${pageKey}`, { cache: 'no-store' });
@@ -42,8 +44,11 @@ export default function AutoSheetSync() {
   useEffect(() => {
     if (ran.current) return;
     ran.current = true;
-    PAGE_KEYS.forEach(syncOne);
-    syncAllProjects();
+    const tasks: Promise<unknown>[] = PAGE_KEYS.map(syncOne);
+    tasks.push(syncAllProjects());
+    Promise.allSettled(tasks).then(() => {
+      window.dispatchEvent(new Event(SHEET_SYNC_DONE_EVENT));
+    });
   }, []);
   return null;
 }

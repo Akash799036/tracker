@@ -3,17 +3,27 @@ import { useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { useStore } from '@/lib/store';
+import { SHEET_SYNC_DONE_EVENT } from './AutoSheetSync';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { ready } = useStore();
+  const [syncDone, setSyncDone] = useState(false);
   const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
-    if (!ready) return;
+    const onDone = () => setSyncDone(true);
+    window.addEventListener(SHEET_SYNC_DONE_EVENT, onDone);
+    return () => window.removeEventListener(SHEET_SYNC_DONE_EVENT, onDone);
+  }, []);
+
+  const done = ready && syncDone;
+
+  useEffect(() => {
+    if (!done) return;
     const t = setTimeout(() => setHidden(true), 400);
     return () => clearTimeout(t);
-  }, [ready]);
+  }, [done]);
 
   return (
     <div className="flex min-h-screen">
@@ -24,9 +34,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </main>
       {!hidden && (
         <div
-          aria-hidden={ready}
+          aria-hidden={done}
           role="status"
-          className={`fixed inset-0 z-[9999] grid place-items-center bg-white transition-opacity duration-400 ${ready ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          className={`fixed inset-0 z-[9999] grid place-items-center bg-white transition-opacity duration-400 ${done ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           <div className="flex flex-col items-center gap-4">
             <div className="relative h-14 w-14">
