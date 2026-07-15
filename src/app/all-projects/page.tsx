@@ -1,7 +1,24 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { ALL_PROJECTS_STORAGE_KEY, type AllProjectsData, type AllProjectsSheet } from '@/lib/allProjectsTypes';
+import { download } from '@/lib/ui';
+
+type OverrideMap = Record<string, { edits: Record<number, Record<string, string>>; deletes: number[] }>;
+const OVERRIDES_KEY = 'all-projects.overrides.v1';
+
+function loadOverrides(): OverrideMap {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(OVERRIDES_KEY);
+    return raw ? (JSON.parse(raw) as OverrideMap) : {};
+  } catch { return {}; }
+}
+
+function saveOverridesLS(map: OverrideMap) {
+  try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(map)); } catch {}
+}
 
 function loadCached(): AllProjectsData | null {
   if (typeof window === 'undefined') return null;
@@ -43,6 +60,9 @@ export default function AllProjectsPage() {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState<'sync' | 'upload' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState<OverrideMap>({});
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollBy = (dx: number) => scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
@@ -53,6 +73,7 @@ export default function AllProjectsPage() {
       setData(cached);
       setActiveSheet(cached.sheets[0]?.name || '');
     }
+    setOverrides(loadOverrides());
     setReady(true);
   }, []);
 
@@ -100,14 +121,85 @@ export default function AllProjectsPage() {
     [data, activeSheet]
   );
 
+  const sheetOverride = overrides[activeSheet] || { edits: {}, deletes: [] };
+
+  const visibleRows = useMemo(() => {
+    if (!sheet) return [] as { row: Record<string, any>; origIdx: number }[];
+    const deletes = new Set(sheetOverride.deletes);
+    return sheet.rows
+      .map((r, i) => ({ row: { ...r, ...(sheetOverride.edits[i] || {}) }, origIdx: i }))
+      .filter(x => !deletes.has(x.origIdx));
+  }, [sheet, sheetOverride]);
+
   const filteredRows = useMemo(() => {
-    if (!sheet) return [];
     const q = query.trim().toLowerCase();
-    if (!q) return sheet.rows;
-    return sheet.rows.filter(r =>
-      Object.values(r).some(v => String(v ?? '').toLowerCase().includes(q))
+    if (!q) return visibleRows;
+    return visibleRows.filter(x =>
+      Object.values(x.row).some(v => String(v ?? '').toLowerCase().includes(q))
     );
-  }, [sheet, query]);
+  }, [visibleRows, query]);
+
+  const toStr = (v: unknown) => (v == null ? '' : String(v));
+
+  const beginEdit = (origIdx: number, row: Record<string, any>) => {
+    setEditingIdx(origIdx);
+    const draft: Record<string, string> = {};
+    for (const k of Object.keys(row)) draft[k] = toStr(row[k]);
+    setEditDraft(draft);
+  };
+  const cancelEdit = () => { setEditingIdx(null); setEditDraft({}); };
+  const saveEdit = (origIdx: number) => {
+    if (!sheet) return;
+    const original = sheet.rows[origIdx] || {};
+    const diff: Record<string, string> = {};
+    for (const h of sheet.headers) {
+      const next = editDraft[h] ?? '';
+      if (String((original as any)[h] ?? '') !== next) diff[h] = next;
+    }
+    const nextMap: OverrideMap = { ...overrides };
+    const prev = nextMap[activeSheet] || { edits: {}, deletes: [] };
+    const edits = { ...prev.edits };
+    if (Object.keys(diff).length === 0) delete edits[origIdx];
+    else edits[origIdx] = { ...(prev.edits[origIdx] || {}), ...diff };
+    nextMap[activeSheet] = { ...prev, edits };
+    setOverrides(nextMap);
+    saveOverridesLS(nextMap);
+    cancelEdit();
+  };
+  const deleteRow = (origIdx: number) => {
+    if (!confirm('Delete this row? (Local only — will not affect the source sheet.)')) return;
+    const nextMap: OverrideMap = { ...overrides };
+    const prev = nextMap[activeSheet] || { edits: {}, deletes: [] };
+    if (prev.deletes.includes(origIdx)) return;
+    nextMap[activeSheet] = { ...prev, deletes: [...prev.deletes, origIdx] };
+    setOverrides(nextMap);
+    saveOverridesLS(nextMap);
+    if (editingIdx === origIdx) cancelEdit();
+  };
+
+  const exportData = (format: 'xlsx' | 'csv' | 'json') => {
+    if (!sheet) return;
+    const rows = filteredRows.map(x => x.row);
+    const headers = sheet.headers;
+    const baseName = `all-projects-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+    if (format === 'json') {
+      download(`${baseName}.json`, JSON.stringify(rows, null, 2), 'application/json');
+      return;
+    }
+    if (format === 'csv') {
+      const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [headers.map(esc).join(',')];
+      rows.forEach(r => lines.push(headers.map(h => esc(r[h])).join(',')));
+      download(`${baseName}.csv`, lines.join('\n'), 'text/csv');
+      return;
+    }
+    const aoa: (string | number | boolean)[][] = [headers.slice()];
+    rows.forEach(r => aoa.push(headers.map(h => (r[h] == null ? '' : String(r[h])))));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
+    XLSX.writeFile(wb, `${baseName}.xlsx`);
+  };
 
   const totalRows = useMemo(
     () => data?.sheets.reduce((s, x) => s + x.rows.length, 0) || 0,
@@ -244,6 +336,24 @@ export default function AllProjectsPage() {
                     <div className="text-[10.5px] tabular-nums text-slate-500 whitespace-nowrap">
                       <span className="font-semibold text-slate-700">{filteredRows.length}</span> of {sheet.rows.length}
                     </div>
+                    <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => exportData('xlsx')}
+                        className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
+                        title="Export current view as Excel"
+                      >Export .xlsx</button>
+                      <button
+                        type="button"
+                        onClick={() => exportData('csv')}
+                        className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
+                      >CSV</button>
+                      <button
+                        type="button"
+                        onClick={() => exportData('json')}
+                        className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50"
+                      >JSON</button>
+                    </div>
                   </div>
                 </div>
 
@@ -256,26 +366,55 @@ export default function AllProjectsPage() {
                             {h}
                           </th>
                         ))}
+                        <th className="text-right text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredRows.map((row, i) => (
-                        <tr key={i} className="hover:bg-brand-50/30 transition-colors">
-                          {sheet.headers.map(h => {
-                            const v = row[h];
-                            return (
-                              <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-slate-700">
-                                {looksLikeUrl(v)
-                                  ? <a href={v} target="_blank" rel="noreferrer" className="text-brand-600 hover:text-brand-700 hover:underline break-all">{v}</a>
-                                  : (v == null ? '' : String(v))}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
+                      {filteredRows.map(({ row, origIdx }) => {
+                        const isEditing = editingIdx === origIdx;
+                        return (
+                          <tr key={origIdx} className="hover:bg-brand-50/30 transition-colors">
+                            {sheet.headers.map(h => {
+                              const v = row[h];
+                              return (
+                                <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-slate-700">
+                                  {isEditing ? (
+                                    <input
+                                      value={editDraft[h] ?? ''}
+                                      onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px]"
+                                    />
+                                  ) : looksLikeUrl(v)
+                                    ? <a href={v} target="_blank" rel="noreferrer" className="text-brand-600 hover:text-brand-700 hover:underline break-all">{v}</a>
+                                    : (v == null ? '' : String(v))}
+                                </td>
+                              );
+                            })}
+                            <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
+                              {isEditing ? (
+                                <>
+                                  <button onClick={() => saveEdit(origIdx)}
+                                    className="text-emerald-600 hover:text-emerald-700 text-[11px] font-semibold mr-3">Save</button>
+                                  <button onClick={cancelEdit}
+                                    className="text-slate-500 hover:text-slate-700 text-[11px] font-semibold">Cancel</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={() => beginEdit(origIdx, row)}
+                                    className="text-brand-600 hover:text-brand-700 text-[11px] font-semibold mr-3">Edit</button>
+                                  <button onClick={() => deleteRow(origIdx)}
+                                    className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold">Delete</button>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {filteredRows.length === 0 && (
                         <tr>
-                          <td colSpan={sheet.headers.length || 1} className="px-3 py-10 text-center text-slate-500 italic">
+                          <td colSpan={(sheet.headers.length || 1) + 1} className="px-3 py-10 text-center text-slate-500 italic">
                             No matching rows.
                           </td>
                         </tr>

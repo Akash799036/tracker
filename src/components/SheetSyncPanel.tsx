@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
   SHEET_SYNC_STORAGE_KEY,
   type AllProjectsData,
@@ -8,6 +9,7 @@ import {
   type SheetRow,
   type SheetSyncPageKey,
 } from '@/lib/sheetSync';
+import { download } from '@/lib/ui';
 
 function loadCached(key: string): AllProjectsData | null {
   if (typeof window === 'undefined') return null;
@@ -147,6 +149,30 @@ export default function SheetSyncPanel({
     saveOverrides(pageKey, nextMap);
     cancelEdit();
   };
+  const exportData = (format: 'xlsx' | 'csv' | 'json') => {
+    if (!sheet) return;
+    const rows = filteredRows.map(x => x.row);
+    const headers = sheet.headers;
+    const baseName = `${pageKey}-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+    if (format === 'json') {
+      download(`${baseName}.json`, JSON.stringify(rows, null, 2), 'application/json');
+      return;
+    }
+    if (format === 'csv') {
+      const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [headers.map(esc).join(',')];
+      rows.forEach(r => lines.push(headers.map(h => esc(r[h])).join(',')));
+      download(`${baseName}.csv`, lines.join('\n'), 'text/csv');
+      return;
+    }
+    const aoa: (string | number | boolean)[][] = [headers.slice()];
+    rows.forEach(r => aoa.push(headers.map(h => (r[h] == null ? '' : String(r[h])))));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
+    XLSX.writeFile(wb, `${baseName}.xlsx`);
+  };
+
   const deleteRow = (origIdx: number) => {
     if (!confirm('Delete this row? (Local only — will not affect Google Sheet.)')) return;
     const nextMap: OverrideMap = { ...overrides };
@@ -233,6 +259,26 @@ export default function SheetSyncPanel({
                   </button>
                   <div className="text-xs text-slate-500 whitespace-nowrap">
                     {filteredRows.length} of {sheet.rows.length} rows
+                  </div>
+                  <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => exportData('xlsx')}
+                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
+                      title="Export current view as Excel"
+                    >Export .xlsx</button>
+                    <button
+                      type="button"
+                      onClick={() => exportData('csv')}
+                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
+                      title="Export current view as CSV"
+                    >CSV</button>
+                    <button
+                      type="button"
+                      onClick={() => exportData('json')}
+                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50"
+                      title="Export current view as JSON"
+                    >JSON</button>
                   </div>
                 </div>
               </div>
