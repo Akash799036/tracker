@@ -3,6 +3,7 @@ import '../styles/globals.css';
 import { StoreProvider } from '@/lib/store';
 import { MarketingProvider } from '@/lib/marketing';
 import AppShell from '@/components/AppShell';
+import AutoSheetSync from '@/components/AutoSheetSync';
 
 export const metadata: Metadata = {
   title: 'Project Tracker',
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-slate-50 text-slate-800 font-sans antialiased">
         <StoreProvider>
           <MarketingProvider>
+            <AutoSheetSync />
             <AppShell>{children}</AppShell>
           </MarketingProvider>
         </StoreProvider>
