@@ -2,6 +2,7 @@
 import { useMemo } from 'react';
 import { useMarketing } from '@/lib/marketing';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 export default function Page() {
   return <Marketing />;
@@ -9,6 +10,8 @@ export default function Page() {
 
 function Marketing() {
   const { tasks, ready } = useMarketing();
+  const syncedTotal = useSyncedTotal('marketing');
+  const totalCount = syncedTotal || tasks.length;
 
   const stats = useMemo(() => {
     const done = tasks.filter(t => /done|complete|100/i.test(t.completion || t.status || '')).length;
@@ -29,7 +32,7 @@ function Marketing() {
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Marketing Tasks</h1>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 backdrop-blur border border-slate-200 px-2.5 py-1 text-[10.5px] font-medium text-slate-700 shadow-sm">
                 <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
-                {tasks.length} task{tasks.length === 1 ? '' : 's'}
+                {totalCount} task{totalCount === 1 ? '' : 's'}
               </span>
             </div>
             <p className="mt-2 text-[12px] text-slate-600">Campaigns, deliverables, and posts across teams.</p>
@@ -38,7 +41,7 @@ function Marketing() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <MiniStat label="Total tasks" value={stats.total} tone="brand" />
+        <MiniStat label="Total tasks" value={totalCount} tone="brand" />
         <MiniStat label="In progress" value={stats.inProgress} tone="sky" />
         <MiniStat label="Completed" value={stats.done} tone="emerald" />
       </div>

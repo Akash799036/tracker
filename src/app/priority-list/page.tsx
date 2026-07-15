@@ -2,9 +2,11 @@
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 export default function PriorityList() {
   const { projects, ready } = useStore();
+  const syncedTotal = useSyncedTotal('priority-list');
   const rows = useMemo(() => {
     const now = Date.now();
     const in14 = now + 14 * 86400_000;
@@ -48,7 +50,7 @@ export default function PriorityList() {
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Priority Projects</h1>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 backdrop-blur border border-rose-200 px-2.5 py-1 text-[10.5px] font-medium text-rose-700 shadow-sm">
                 <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
-                {rows.length} needs focus
+                {(syncedTotal || rows.length)} needs focus
               </span>
             </div>
             <p className="mt-2 text-[12px] text-slate-600">Launching in the next 14 days or actively in flight.</p>
@@ -57,7 +59,7 @@ export default function PriorityList() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <MiniStat label="In focus" value={stats.total} tone="rose" />
+        <MiniStat label="In focus" value={syncedTotal || stats.total} tone="rose" />
         <MiniStat label="Launching ≤7 d" value={stats.launchingThisWeek} tone="amber" />
         <MiniStat label="Launching ≤14 d" value={stats.launchingSoon} tone="brand" />
       </div>

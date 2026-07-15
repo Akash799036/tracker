@@ -2,9 +2,11 @@
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 export default function MaintenancePage() {
   const { projects, ready } = useStore();
+  const syncedTotal = useSyncedTotal('maintenance');
   const rows = useMemo(() =>
     projects.filter(p => p.maintenanceStart || p.maintenanceEnd)
       .sort((a, b) => new Date(a.maintenanceEnd || 0).getTime() - new Date(b.maintenanceEnd || 0).getTime()),
@@ -37,7 +39,7 @@ export default function MaintenancePage() {
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Weekly / Maintenance</h1>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 backdrop-blur border border-slate-200 px-2.5 py-1 text-[10.5px] font-medium text-slate-700 shadow-sm">
                 <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-pulse" />
-                {rows.length} on contract
+                {(syncedTotal || rows.length)} on contract
               </span>
             </div>
             <p className="mt-2 text-[12px] text-slate-600">Projects on active maintenance windows — sorted by end date.</p>
@@ -46,7 +48,7 @@ export default function MaintenancePage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <MiniStat label="Total contracts" value={stats.total} tone="violet" />
+        <MiniStat label="Total contracts" value={syncedTotal || stats.total} tone="violet" />
         <MiniStat label="Expiring ≤14 d" value={stats.expiring} tone="amber" />
         <MiniStat label="Expired" value={stats.expired} tone="rose" />
       </div>

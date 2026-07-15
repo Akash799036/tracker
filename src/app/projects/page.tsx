@@ -3,9 +3,12 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 export default function ProjectsPage() {
   const { projects, ready } = useStore();
+  const syncedTotal = useSyncedTotal('projects');
+  const totalCount = syncedTotal || projects.length;
 
   const stats = useMemo(() => {
     const active = projects.filter(p => /progress|development|design|review|testing/i.test(p.status || '')).length;
@@ -28,7 +31,7 @@ export default function ProjectsPage() {
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Ongoing Projects</h1>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 backdrop-blur border border-slate-200 px-2.5 py-1 text-[10.5px] font-medium text-slate-700 shadow-sm">
                 <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
-                {projects.length} total
+                {totalCount} total
               </span>
             </div>
             <p className="mt-2 text-[12px] text-slate-600">Track everything currently in flight across your teams.</p>
@@ -43,7 +46,7 @@ export default function ProjectsPage() {
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MiniStat label="Total" value={stats.total} tone="brand" />
+        <MiniStat label="Total" value={totalCount} tone="brand" />
         <MiniStat label="Active" value={stats.active} tone="sky" />
         <MiniStat label="Live" value={stats.live} tone="emerald" />
         <MiniStat label="On hold" value={stats.hold} tone="amber" />

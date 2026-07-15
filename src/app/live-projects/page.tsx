@@ -2,9 +2,11 @@
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 export default function LiveProjects() {
   const { projects, ready } = useStore();
+  const syncedTotal = useSyncedTotal('live-projects');
   const live = useMemo(() =>
     projects.filter(p => /live|delivered/i.test(p.status || '') || (p.liveDate && new Date(p.liveDate).getTime() < Date.now())),
   [projects]);
@@ -32,7 +34,7 @@ export default function LiveProjects() {
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">Live Projects</h1>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 backdrop-blur border border-emerald-200 px-2.5 py-1 text-[10.5px] font-medium text-emerald-700 shadow-sm">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                {live.length} in production
+                {(syncedTotal || live.length)} in production
               </span>
             </div>
             <p className="mt-2 text-[12px] text-slate-600">Everything currently deployed and serving traffic.</p>
@@ -42,7 +44,7 @@ export default function LiveProjects() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <MiniStat label="Total live" value={live.length} tone="emerald" />
+        <MiniStat label="Total live" value={syncedTotal || live.length} tone="emerald" />
         <MiniStat label="Launched (30d)" value={recent} tone="brand" />
         <MiniStat label="SSL active" value={withSsl} tone="sky" />
       </div>

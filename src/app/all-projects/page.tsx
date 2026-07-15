@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { ALL_PROJECTS_STORAGE_KEY, type AllProjectsData, type AllProjectsSheet } from '@/lib/allProjectsTypes';
 import { download } from '@/lib/ui';
+import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 type OverrideMap = Record<string, { edits: Record<number, Record<string, string>>; deletes: number[] }>;
 const OVERRIDES_KEY = 'all-projects.overrides.v1';
@@ -201,10 +202,12 @@ export default function AllProjectsPage() {
     XLSX.writeFile(wb, `${baseName}.xlsx`);
   };
 
-  const totalRows = useMemo(
+  const localTotalRows = useMemo(
     () => data?.sheets.reduce((s, x) => s + x.rows.length, 0) || 0,
     [data]
   );
+  const syncedTotal = useSyncedTotal('all-projects');
+  const totalRows = syncedTotal || localTotalRows;
 
   if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
 
