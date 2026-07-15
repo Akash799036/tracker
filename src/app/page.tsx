@@ -246,7 +246,7 @@ export default function Dashboard() {
       )}
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         <StatCard label="Total records" value={totalRows} sub={`across ${summaries.length} pages`} tone="brand"   icon={IconLayers} />
         <StatCard label="In progress"   value={buckets.progress} sub="active development"        tone="sky"     icon={IconPlay} />
         <StatCard label="Live"          value={buckets.live}     sub="deployed / launched"       tone="emerald" icon={IconCheck} />

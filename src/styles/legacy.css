@@ -473,9 +473,15 @@ select.fld {
 }
 .donut-graphic {
   position: relative;
-  width: 180px;
-  height: 180px;
+  width: 140px;
+  height: 140px;
   margin: 0 auto;
+}
+@media (min-width: 640px) {
+  .donut-graphic {
+    width: 180px;
+    height: 180px;
+  }
 }
 .donut-svg {
   width: 100%;

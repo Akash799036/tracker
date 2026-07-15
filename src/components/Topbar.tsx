@@ -28,24 +28,22 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
   };
 
   return (
-    <header className="h-16 bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-20 flex items-center gap-3 px-4 sm:px-6">
-      <button onClick={onMenu} className="lg:hidden p-2 rounded-lg hover:bg-slate-100" aria-label="Menu">
+    <header className="h-16 bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-20 flex items-center gap-2 sm:gap-3 px-3 sm:px-6">
+      <button onClick={onMenu} className="lg:hidden p-2 rounded-lg hover:bg-slate-100 shrink-0" aria-label="Menu">
         <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
-      <div className="flex-1 max-w-xl relative">
+      <div className="flex-1 min-w-0 max-w-xl relative">
         <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={onSearch}
           type="text" placeholder="Search projects…"
           className="w-full pl-3 pr-3 h-10 rounded-lg bg-slate-100 border border-transparent focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 outline-none text-sm"/>
       </div>
-      <Link href="/project" className="h-10 px-4 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 shadow-soft flex items-center gap-1.5">
+      <Link href="/project" className="shrink-0 h-10 px-3 sm:px-4 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 shadow-soft flex items-center gap-1.5">
         <span className="hidden sm:inline">New Project</span>
-        <span className="sm:hidden">+</span>
+        <span className="sm:hidden text-lg leading-none">+</span>
       </Link>
-      <div className="ml-auto flex items-center gap-3">
-        <button onClick={toggleTheme} className="theme-toggle h-10 w-10 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white grid place-items-center" aria-label="Toggle theme">
-          {theme === 'dark' ? '☀' : '☾'}
-        </button>
-      </div>
+      <button onClick={toggleTheme} className="theme-toggle shrink-0 h-10 w-10 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white grid place-items-center" aria-label="Toggle theme">
+        {theme === 'dark' ? '☀' : '☾'}
+      </button>
     </header>
   );
 }

@@ -309,17 +309,17 @@ export default function AllProjectsPage() {
 
             {sheet && (
               <>
-                <div className="p-3 border-b border-slate-100 flex items-center justify-between gap-3">
-                  <div className="relative flex-1 min-w-[200px]">
+                <div className="p-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                     <input
                       value={query}
                       onChange={e => setQuery(e.target.value)}
                       placeholder={`Search in ${sheet.name}…`}
-                      className="h-9 pl-9 pr-3 w-full sm:w-96 rounded-lg border border-slate-200 bg-white text-[13px] focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition"
+                      className="h-9 pl-9 pr-3 w-full sm:max-w-sm lg:w-96 rounded-lg border border-slate-200 bg-white text-[13px] focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition"
                     />
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => scrollBy(-400)}
@@ -360,7 +360,7 @@ export default function AllProjectsPage() {
                   </div>
                 </div>
 
-                <div ref={scrollRef} className="overflow-auto max-h-[70vh] scroll-smooth">
+                <div ref={scrollRef} className="overflow-auto max-h-[60vh] sm:max-h-[70vh] scroll-smooth">
                   <table className="min-w-full text-[12.5px]">
                     <thead className="bg-slate-50/80 backdrop-blur text-slate-600 sticky top-0 z-10">
                       <tr>

@@ -238,9 +238,9 @@ export default function SheetSyncPanel({
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                   placeholder={`Search in ${sheet.name}…`}
-                  className="w-full sm:w-80 px-3 py-2 rounded-lg border border-slate-300 text-sm"
+                  className="w-full sm:max-w-xs px-3 py-2 rounded-lg border border-slate-300 text-sm"
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex items-center flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => scrollBy(-400)}

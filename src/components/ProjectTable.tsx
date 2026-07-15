@@ -30,7 +30,7 @@ export default function ProjectTable({
     <div className="bg-white rounded-xl border border-slate-200 shadow-card">
       <div className="p-4 border-b border-slate-100 flex items-center gap-2 justify-between flex-wrap">
         <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="Search…"
-          className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm w-64 focus:outline-none focus:border-brand-400" />
+          className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm w-full sm:w-64 focus:outline-none focus:border-brand-400" />
         <span className="text-xs text-slate-500">{filtered.length} result{filtered.length === 1 ? '' : 's'}</span>
       </div>
       <div className="overflow-x-auto">
