@@ -1,6 +1,6 @@
 'use client';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { PLATFORM_OPTIONS, STATUS_OPTIONS, SSL_OPTIONS, CATEGORY_OPTIONS, type Project } from '@/lib/types';
 import { avatarStyle, initials } from '@/lib/ui';
@@ -8,6 +8,14 @@ import { avatarStyle, initials } from '@/lib/ui';
 const EMPTY: Project = { id: '' };
 
 export default function ProjectPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProjectPageInner />
+    </Suspense>
+  );
+}
+
+function ProjectPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const id = params.get('id') || '';
