@@ -2,12 +2,10 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import ImportExportDialog from './ImportExportDialog';
 
 export default function Topbar({ onMenu }: { onMenu: () => void }) {
   const [q, setQ] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [dialog, setDialog] = useState<null | 'import' | 'export'>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -44,20 +42,10 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
         <span className="sm:hidden">+</span>
       </Link>
       <div className="ml-auto flex items-center gap-3">
-        <button onClick={() => setDialog('import')} className="h-10 px-3 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white">
-          <span className="hidden md:inline">Import</span>
-          <span className="md:hidden">↑</span>
-        </button>
-        <button onClick={() => setDialog('export')} className="h-10 px-3 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white">
-          <span className="hidden md:inline">Export</span>
-          <span className="md:hidden">↓</span>
-        </button>
         <button onClick={toggleTheme} className="theme-toggle h-10 w-10 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white grid place-items-center" aria-label="Toggle theme">
           {theme === 'dark' ? '☀' : '☾'}
         </button>
       </div>
-
-      {dialog && <ImportExportDialog mode={dialog} onClose={() => setDialog(null)} />}
     </header>
   );
 }
