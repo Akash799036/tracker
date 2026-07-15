@@ -913,3 +913,70 @@ html[data-theme="dark"] .ring-rose-500\/20    { --tw-ring-color: rgba(244,63,94,
 html[data-theme="dark"] .ring-violet-500\/20  { --tw-ring-color: rgba(139,92,246,.35) !important; }
 html[data-theme="dark"] .ring-sky-500\/20     { --tw-ring-color: rgba(14,165,233,.35) !important; }
 html[data-theme="dark"] .ring-slate-500\/20   { --tw-ring-color: rgba(148,163,184,.35) !important; }
+
+/* =====================================================
+   Dark theme — All Projects & Data & Backup readability
+   Covers utility variants (opacity suffixes, gradients,
+   dashed borders) used on those pages that fall through
+   the base overrides above.
+   ===================================================== */
+
+/* Border opacity variants and light border tints */
+html[data-theme="dark"] .border-slate-200\/70,
+html[data-theme="dark"] .border-slate-100 { border-color: #334155 !important; }
+html[data-theme="dark"] .border-dashed.border-slate-300 { border-color: #475569 !important; }
+html[data-theme="dark"] .border-rose-200\/70 { border-color: rgba(244,63,94,.45) !important; }
+
+/* Translucent white/slate backgrounds used on badges, sticky headers, tabs */
+html[data-theme="dark"] .bg-white\/80,
+html[data-theme="dark"] .bg-white\/60 { background-color: rgba(30,41,59,.85) !important; }
+html[data-theme="dark"] .bg-slate-50\/60,
+html[data-theme="dark"] .bg-slate-50\/80,
+html[data-theme="dark"] .bg-slate-50\/95 { background-color: rgba(30,41,59,.85) !important; }
+html[data-theme="dark"] .bg-slate-100\/60 { background-color: rgba(51,65,85,.6) !important; }
+
+/* Brand-tinted row hover on the All Projects table */
+html[data-theme="dark"] .hover\:bg-brand-50\/30:hover { background-color: rgba(58,99,245,.14) !important; }
+
+/* Hero + section gradients on both pages — remap the white/slate stops so
+   they blend with the dark canvas instead of glowing white. */
+html[data-theme="dark"] .from-white {
+  --tw-gradient-from: #111827 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(17,24,39,0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+html[data-theme="dark"] .via-white {
+  --tw-gradient-to: rgba(17,24,39,0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #111827 var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+html[data-theme="dark"] .to-white {
+  --tw-gradient-to: #111827 var(--tw-gradient-to-position) !important;
+}
+html[data-theme="dark"] .to-slate-50 {
+  --tw-gradient-to: #0f172a var(--tw-gradient-to-position) !important;
+}
+html[data-theme="dark"] .via-slate-50 {
+  --tw-gradient-stops: var(--tw-gradient-from), #0f172a var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+html[data-theme="dark"] .via-brand-50\/40 {
+  --tw-gradient-stops: var(--tw-gradient-from), rgba(58,99,245,.12) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+html[data-theme="dark"] .from-slate-50\/60 {
+  --tw-gradient-from: rgba(30,41,59,.6) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(30,41,59,0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+html[data-theme="dark"] .from-rose-50\/60 {
+  --tw-gradient-from: rgba(244,63,94,.14) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(244,63,94,0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+/* Sticky right-column action cell on the All Projects table pins bg-white;
+   the base td.bg-white rule handles it but tbody rows also need the hover
+   variant to keep the pinned cell aligned with the row tint. */
+html[data-theme="dark"] tr:hover > td.bg-white { background-color: #1e293b !important; }
+
+/* Search input on All Projects uses bg-white — the generic input override
+   already recolors it, but make sure the border matches the dark palette. */
+html[data-theme="dark"] input.bg-white { background-color: #0f172a !important; border-color: #334155 !important; }
