@@ -69,6 +69,9 @@ export default function AllProjectsPage() {
   const scrollBy = (dx: number) => scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
 
   useEffect(() => {
+    // Paint instantly from the browser cache if present, then always refresh
+    // from the database so every visitor (incognito or not) sees the full,
+    // authoritative row set — not a stale per-browser snapshot.
     const cached = loadCached();
     if (cached) {
       setData(cached);
@@ -76,6 +79,39 @@ export default function AllProjectsPage() {
     }
     setOverrides(loadOverrides());
     setReady(true);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/all-projects/sync', { cache: 'no-store' });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          // The API reports the real reason (e.g. missing DB env vars in
+          // production). Surface it instead of silently showing a blank page.
+          if (!cancelled) setError(json?.error || `Failed to load data (HTTP ${res.status}).`);
+          return;
+        }
+        const fresh = json as AllProjectsData;
+        if (cancelled) return;
+        if (!fresh?.sheets?.length) {
+          // Connected, but nothing seeded yet — only complain if we had no cache.
+          if (!cached) setError('The database has no data yet. Run the seeder (npm run seed).');
+          return;
+        }
+        setError(null);
+        setData(fresh);
+        persist(fresh);
+        setActiveSheet(prev =>
+          fresh.sheets.find(s => s.name === prev) ? prev : fresh.sheets[0]?.name || ''
+        );
+      } catch (e: any) {
+        // Network failure reaching our own API. Keep any cache we already showed.
+        if (!cancelled && !cached) {
+          setError(e?.message || 'Could not reach the server to load data.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const applyData = useCallback((next: AllProjectsData) => {
