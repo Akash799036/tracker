@@ -32,10 +32,12 @@ html[data-theme="dark"] {
   --glass-border: rgba(148, 163, 184, 0.16);
   --glass-hairline: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px -16px rgba(0, 0, 0, 0.7);
-  --aurora-1: rgba(58, 99, 245, 0.30);
-  --aurora-2: rgba(139, 92, 246, 0.24);
-  --aurora-3: rgba(6, 182, 212, 0.18);
-  --aurora-4: rgba(16, 185, 129, 0.14);
+  --aurora-1: rgba(79, 118, 255, 0.48);
+  --aurora-2: rgba(168, 85, 247, 0.42);
+  --aurora-3: rgba(6, 182, 212, 0.34);
+  --aurora-4: rgba(16, 185, 129, 0.26);
+  --aurora-5: rgba(236, 72, 153, 0.30);
+  --aurora-6: rgba(251, 146, 60, 0.22);
   --canvas-base: #070b16;
 }
 
@@ -55,6 +57,19 @@ body::before {
   background-attachment: fixed;
 }
 
+/* Dark mode layers in two extra hues for a richer, more saturated mesh */
+html[data-theme="dark"] body::before {
+  background:
+    radial-gradient(48rem 48rem at 12% -8%, var(--aurora-1), transparent 60%),
+    radial-gradient(40rem 40rem at 92% 6%, var(--aurora-2), transparent 58%),
+    radial-gradient(30rem 30rem at 58% 40%, var(--aurora-5), transparent 55%),
+    radial-gradient(44rem 44rem at 78% 96%, var(--aurora-3), transparent 60%),
+    radial-gradient(26rem 26rem at 34% 62%, var(--aurora-6), transparent 55%),
+    radial-gradient(42rem 42rem at 4% 88%, var(--aurora-4), transparent 62%),
+    var(--canvas-base);
+  background-attachment: fixed;
+}
+
 /* Slow ambient drift — the only page-level motion, purely atmospheric */
 body::after {
   content: "";
@@ -67,6 +82,14 @@ body::after {
     radial-gradient(28rem 28rem at 30% 20%, var(--aurora-2), transparent 55%),
     radial-gradient(24rem 24rem at 70% 70%, var(--aurora-3), transparent 55%);
   animation: aurora-drift 34s ease-in-out infinite alternate;
+}
+/* Brighter, multi-hue drift in dark mode so the gradient reads clearly */
+html[data-theme="dark"] body::after {
+  opacity: 0.7;
+  background:
+    radial-gradient(30rem 30rem at 30% 20%, var(--aurora-2), transparent 55%),
+    radial-gradient(26rem 26rem at 70% 70%, var(--aurora-3), transparent 55%),
+    radial-gradient(24rem 24rem at 50% 90%, var(--aurora-5), transparent 55%);
 }
 @keyframes aurora-drift {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
