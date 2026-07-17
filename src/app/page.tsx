@@ -241,7 +241,7 @@ export default function Dashboard() {
       {!anySynced && (
         <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-50/50 px-4 py-3 text-[12px] text-amber-800 flex items-start gap-2 shadow-sm">
           <span className="mt-0.5">⚠️</span>
-          <span>No pages synced yet. Open a project page and click <span className="font-semibold">Sync Data from Google Sheets</span>.</span>
+          <span>No project data loaded yet.</span>
         </div>
       )}
 

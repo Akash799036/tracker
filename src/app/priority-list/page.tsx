@@ -64,7 +64,7 @@ export default function PriorityList() {
         <MiniStat label="Launching ≤14 d" value={stats.launchingSoon} tone="brand" />
       </div>
 
-      <SheetSyncPanel pageKey="priority-list" title="Priority List — Google Sheet" />
+      <SheetSyncPanel pageKey="priority-list" title="Priority List" />
     </div>
   );
 }

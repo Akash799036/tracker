@@ -19,10 +19,6 @@ function loadCached(key: string): AllProjectsData | null {
   } catch { return null; }
 }
 
-function persist(key: string, data: AllProjectsData) {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
-}
-
 // Per-sheet local overrides on top of the read-only synced data.
 // Shape: { [sheetName]: { edits: { [rowIndex]: Partial<SheetRow> }, deletes: number[] } }
 type OverrideMap = Record<string, { edits: Record<number, Record<string, string>>; deletes: number[] }>;
@@ -57,7 +53,7 @@ function looksLikeUrl(v: unknown): v is string {
 
 export default function SheetSyncPanel({
   pageKey,
-  title = 'Google Sheet Data',
+  title = 'Project Data',
 }: {
   pageKey: SheetSyncPageKey;
   title?: string;
@@ -67,7 +63,6 @@ export default function SheetSyncPanel({
   const [ready, setReady] = useState(false);
   const [activeSheet, setActiveSheet] = useState<string>('');
   const [query, setQuery] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<OverrideMap>({});
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -96,23 +91,6 @@ export default function SheetSyncPanel({
     setOverrides(loadOverrides(pageKey));
     setReady(true);
   }, [storageKey, pageKey]);
-
-  const runSync = useCallback(async () => {
-    setBusy(true); setError(null);
-    try {
-      const res = await fetch(`/api/sheet-sync/${pageKey}`, { cache: 'no-store' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'sync failed');
-      const next = json as AllProjectsData;
-      setData(next);
-      persist(storageKey, next);
-      setActiveSheet(next.sheets[0]?.name || '');
-    } catch (e: any) {
-      setError(e?.message || 'sync failed');
-    } finally {
-      setBusy(false);
-    }
-  }, [pageKey, storageKey]);
 
   // Load custom fields + values whenever the active sheet changes.
   const loadCustomFields = useCallback(async (sheetName: string) => {
@@ -270,7 +248,7 @@ export default function SheetSyncPanel({
   };
 
   const deleteRow = (origIdx: number) => {
-    if (!confirm('Delete this row? (Local only — will not affect Google Sheet.)')) return;
+    if (!confirm('Delete this row? (Local only.)')) return;
     const nextMap: OverrideMap = { ...overrides };
     const prev = nextMap[activeSheet] || { edits: {}, deletes: [] };
     if (prev.deletes.includes(origIdx)) return;
@@ -289,17 +267,10 @@ export default function SheetSyncPanel({
           <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           <p className="text-xs text-slate-500 mt-0.5">
             {data
-              ? <>Synced from Google Sheets · last updated {fmtTime(data.syncedAt)}</>
-              : 'Not synced yet. Click the button to pull latest data from this page’s Google Sheet.'}
+              ? <>Last updated {fmtTime(data.syncedAt)}</>
+              : 'No data loaded yet.'}
           </p>
         </div>
-        <button
-          onClick={runSync}
-          disabled={busy}
-          className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {busy ? 'Syncing…' : 'Sync Data from Google Sheets'}
-        </button>
       </div>
 
       {error && (

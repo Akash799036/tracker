@@ -52,7 +52,7 @@ export default function ProjectsPage() {
         <MiniStat label="On hold" value={stats.hold} tone="amber" />
       </div>
 
-      <SheetSyncPanel pageKey="projects" title="Ongoing Projects — Google Sheet" />
+      <SheetSyncPanel pageKey="projects" title="Ongoing Projects" />
     </div>
   );
 }

@@ -21,8 +21,8 @@ function fail(e: unknown) {
 // GET /api/custom-fields/:page?sheet=Name
 // Returns the custom field definitions (optionally filtered to one sheet) plus
 // all stored values, so the client can render extra columns.
-export async function GET(req: Request, { params }: { params: { page: string } }) {
-  const pageKey = params.page;
+export async function GET(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
     const sheet = new URL(req.url).searchParams.get('sheet') || undefined;
@@ -35,8 +35,8 @@ export async function GET(req: Request, { params }: { params: { page: string } }
 }
 
 // POST /api/custom-fields/:page  { sheetName, label }
-export async function POST(req: Request, { params }: { params: { page: string } }) {
-  const pageKey = params.page;
+export async function POST(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
     const body = await req.json().catch(() => ({}));
@@ -52,8 +52,8 @@ export async function POST(req: Request, { params }: { params: { page: string } 
 }
 
 // PATCH /api/custom-fields/:page  { fieldId, rowKey, value }
-export async function PATCH(req: Request, { params }: { params: { page: string } }) {
-  const pageKey = params.page;
+export async function PATCH(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
     const body = await req.json().catch(() => ({}));
@@ -72,8 +72,8 @@ export async function PATCH(req: Request, { params }: { params: { page: string }
 }
 
 // DELETE /api/custom-fields/:page?id=123
-export async function DELETE(req: Request, { params }: { params: { page: string } }) {
-  const pageKey = params.page;
+export async function DELETE(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
     const id = Number(new URL(req.url).searchParams.get('id'));

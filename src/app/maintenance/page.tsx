@@ -53,7 +53,7 @@ export default function MaintenancePage() {
         <MiniStat label="Expired" value={stats.expired} tone="rose" />
       </div>
 
-      <SheetSyncPanel pageKey="maintenance" title="Maintenance — Google Sheet" />
+      <SheetSyncPanel pageKey="maintenance" title="Maintenance" />
     </div>
   );
 }

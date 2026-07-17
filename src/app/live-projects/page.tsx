@@ -49,7 +49,7 @@ export default function LiveProjects() {
         <MiniStat label="SSL active" value={withSsl} tone="sky" />
       </div>
 
-      <SheetSyncPanel pageKey="live-projects" title="Live Projects — Google Sheet" />
+      <SheetSyncPanel pageKey="live-projects" title="Live Projects" />
     </div>
   );
 }

@@ -86,20 +86,6 @@ export default function AllProjectsPage() {
     }
   }, [activeSheet]);
 
-  const runSync = useCallback(async () => {
-    setBusy('sync'); setError(null);
-    try {
-      const res = await fetch('/api/all-projects/sync', { cache: 'no-store' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'sync failed');
-      applyData(json as AllProjectsData);
-    } catch (e: any) {
-      setError(e?.message || 'sync failed');
-    } finally {
-      setBusy(null);
-    }
-  }, [applyData]);
-
   const runUpload = useCallback(async (file: File) => {
     setBusy('upload'); setError(null);
     try {
@@ -233,18 +219,10 @@ export default function AllProjectsPage() {
                 ? <>Source: <span className="font-semibold text-slate-800">{data.source === 'google-sheets' ? 'Google Sheets' : 'file upload'}</span>
                     {data.sourceName ? <> · <span className="font-mono text-[11px] text-slate-500">{data.sourceName}</span></> : null}
                     <span className="text-slate-400"> · {fmtTime(data.syncedAt)}</span></>
-                : 'No data loaded yet. Sync from Google Sheets or upload a file.'}
+                : 'No data loaded yet. Upload a file to begin.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
-            <button
-              onClick={runSync}
-              disabled={busy !== null}
-              className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center gap-1.5 shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
-              {busy === 'sync' ? 'Syncing…' : 'Sync Google Sheets'}
-            </button>
             <label className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 hover:border-slate-300 items-center gap-1.5 shadow-sm cursor-pointer transition-colors">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               {busy === 'upload' ? 'Uploading…' : 'Upload .xlsx / .csv'}
@@ -285,7 +263,7 @@ export default function AllProjectsPage() {
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
           </div>
           <div className="text-[13px] font-semibold text-slate-800">No sheets loaded yet</div>
-          <div className="text-[11.5px] text-slate-500 mt-1">Click <span className="font-semibold text-slate-700">Sync Google Sheets</span> or upload a file to begin.</div>
+          <div className="text-[11.5px] text-slate-500 mt-1">Upload a file to begin.</div>
         </div>
       ) : (
         <>

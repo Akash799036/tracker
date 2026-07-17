@@ -46,7 +46,7 @@ function Marketing() {
         <MiniStat label="Completed" value={stats.done} tone="emerald" />
       </div>
 
-      <SheetSyncPanel pageKey="marketing" title="Marketing — Google Sheet" />
+      <SheetSyncPanel pageKey="marketing" title="Marketing" />
     </div>
   );
 }
