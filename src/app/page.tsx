@@ -45,8 +45,8 @@ function StatCard({ label, value, sub, tone = 'slate', icon }: {
 }) {
   const t = TONE_STYLES[tone];
   return (
-    <div className={`group relative overflow-hidden rounded-xl bg-white border border-slate-200/70 ring-1 ${t.ring} px-4 py-3.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all`}>
-      <div className={`absolute inset-0 bg-gradient-to-br ${t.grad} opacity-60 pointer-events-none`} />
+    <div className={`glass group relative overflow-hidden rounded-xl ring-1 ${t.ring} px-4 py-3.5 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200`}>
+      <div className={`absolute inset-0 bg-gradient-to-br ${t.grad} opacity-70 pointer-events-none`} />
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</div>
@@ -69,7 +69,7 @@ function CompactPipeline({ items, total }: { items: { label: string; value: numb
   return (
     <div className="space-y-3">
       {/* Stacked bar */}
-      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-500/10 ring-1 ring-inset ring-white/40">
         {top.map((d, i) => (
           <div
             key={i}
@@ -100,7 +100,7 @@ function PageCard({ s, accent }: { s: PageSummary; accent: string }) {
   return (
     <Link
       href={s.source.href}
-      className="group relative overflow-hidden flex items-center gap-3 bg-white border border-slate-200/70 rounded-xl px-3.5 py-3 hover:border-brand-300 hover:shadow-md hover:-translate-y-0.5 transition-all"
+      className="glass group relative overflow-hidden flex items-center gap-3 rounded-xl px-3.5 py-3 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200"
     >
       <span className={`absolute left-0 top-0 bottom-0 w-1 ${accent}`} />
       <div className="min-w-0 flex-1 pl-1">
@@ -210,7 +210,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-5">
       {/* Hero header */}
-      <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white via-brand-50/40 to-white p-5 shadow-sm">
+      <div className="glass glass-strong relative overflow-hidden rounded-2xl p-5">
         <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-brand-500/10 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
         <div className="relative flex flex-wrap items-end justify-between gap-4">
@@ -228,7 +228,7 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Link href="/all-projects" className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 hover:border-slate-300 items-center transition-colors shadow-sm">
+            <Link href="/all-projects" className="inline-flex h-9 px-3.5 rounded-lg bg-white/50 backdrop-blur border border-white/60 text-slate-700 text-[12px] font-semibold hover:bg-white/70 items-center transition-colors shadow-sm">
               View all
             </Link>
             <Link href="/project" className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all">
@@ -259,7 +259,7 @@ export default function Dashboard() {
         {/* LEFT column */}
         <div className="lg:col-span-8 space-y-4">
           {/* Per-page cards */}
-          <section className="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4">
+          <section className="glass rounded-2xl p-4">
             <div className="flex items-baseline justify-between mb-3">
               <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Pages</h2>
               <span className="text-[10.5px] text-slate-500">Click to open</span>
@@ -272,7 +272,7 @@ export default function Dashboard() {
           </section>
 
           {/* Top platforms */}
-          <section className="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4">
+          <section className="glass rounded-2xl p-4">
             <div className="flex items-baseline justify-between mb-3">
               <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Top platforms</h2>
               <span className="text-[10.5px] text-slate-500">by rows</span>
@@ -286,7 +286,7 @@ export default function Dashboard() {
         {/* RIGHT column */}
         <div className="lg:col-span-4 space-y-4">
           {/* Status distribution — compact */}
-          <section className="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4">
+          <section className="glass rounded-2xl p-4">
             <div className="flex items-baseline justify-between mb-3">
               <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Status distribution</h2>
               <span className="text-[10.5px] text-slate-500">Top 5</span>
@@ -295,7 +295,7 @@ export default function Dashboard() {
           </section>
 
           {/* Sync summary card */}
-          <section className="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4">
+          <section className="glass rounded-2xl p-4">
             <div className="flex items-baseline justify-between mb-3">
               <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Sync activity</h2>
               <span className="text-[10.5px] text-slate-500">Latest per page</span>
