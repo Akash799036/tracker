@@ -7,19 +7,9 @@ import { download } from '@/lib/ui';
 import { CSV_HEADERS, FIELDS, type Project } from '@/lib/types';
 
 export default function SettingsPage() {
-  const { projects, exportJSON, exportCSV, importJSON, clear, storageSize, upsert } = useStore();
+  const { projects, exportCSV, clear, storageSize, upsert } = useStore();
   const { clear: clearMarketing } = useMarketing();
-  const jsonRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
-
-  const onImportJSON = async (f: File) => {
-    try {
-      const n = importJSON(await f.text());
-      alert(`Imported ${n} projects`);
-    } catch (e: any) {
-      alert(`Import failed: ${e.message}`);
-    }
-  };
 
   const exportXLSX = () => {
     const rows = [CSV_HEADERS, ...projects.map(p => FIELDS.map(f => {
@@ -85,17 +75,13 @@ export default function SettingsPage() {
       {/* Export */}
       <Section
         title="Export"
-        subtitle="Download your data as JSON, CSV, or Excel."
+        subtitle="Download your data as CSV or Excel."
         icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
         tone="brand"
       >
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => download('projects.json', exportJSON(), 'application/json')}
-            className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all">
-            Export JSON
-          </button>
           <button onClick={() => download('projects.csv', exportCSV(), 'text/csv')}
-            className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 hover:border-slate-300 items-center shadow-sm transition-colors">
+            className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all">
             Export CSV
           </button>
           <button onClick={exportXLSX}
@@ -108,21 +94,15 @@ export default function SettingsPage() {
       {/* Import */}
       <Section
         title="Import"
-        subtitle="Load projects from a JSON export or an Excel / CSV file."
+        subtitle="Load projects from an Excel / CSV file."
         icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>}
         tone="sky"
       >
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => jsonRef.current?.click()}
-            className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 hover:border-slate-300 items-center shadow-sm transition-colors">
-            Import JSON
-          </button>
           <button onClick={() => xlsxRef.current?.click()}
             className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 hover:border-slate-300 items-center shadow-sm transition-colors">
             Import Excel / CSV
           </button>
-          <input ref={jsonRef} type="file" accept=".json,application/json" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) onImportJSON(f); e.target.value = ''; }} />
           <input ref={xlsxRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) onImportXLSX(f); e.target.value = ''; }} />
         </div>

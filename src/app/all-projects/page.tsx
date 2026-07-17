@@ -164,15 +164,11 @@ export default function AllProjectsPage() {
     if (editingIdx === origIdx) cancelEdit();
   };
 
-  const exportData = (format: 'xlsx' | 'csv' | 'json') => {
+  const exportData = (format: 'xlsx' | 'csv') => {
     if (!sheet) return;
     const rows = filteredRows.map(x => x.row);
     const headers = sheet.headers;
     const baseName = `all-projects-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
-    if (format === 'json') {
-      download(`${baseName}.json`, JSON.stringify(rows, null, 2), 'application/json');
-      return;
-    }
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const lines = [headers.map(esc).join(',')];
@@ -327,13 +323,8 @@ export default function AllProjectsPage() {
                       <button
                         type="button"
                         onClick={() => exportData('csv')}
-                        className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
-                      >CSV</button>
-                      <button
-                        type="button"
-                        onClick={() => exportData('json')}
                         className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50"
-                      >JSON</button>
+                      >CSV</button>
                     </div>
                   </div>
                 </div>

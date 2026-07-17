@@ -218,7 +218,7 @@ export default function SheetSyncPanel({
     saveOverrides(pageKey, nextMap);
     cancelEdit();
   };
-  const exportData = (format: 'xlsx' | 'csv' | 'json') => {
+  const exportData = (format: 'xlsx' | 'csv') => {
     if (!sheet) return;
     // Merge custom-field columns into the exported view.
     const rows = filteredRows.map(x => {
@@ -228,10 +228,6 @@ export default function SheetSyncPanel({
     });
     const headers = [...sheet.headers, ...customFields.map(f => f.label)];
     const baseName = `${pageKey}-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
-    if (format === 'json') {
-      download(`${baseName}.json`, JSON.stringify(rows, null, 2), 'application/json');
-      return;
-    }
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const lines = [headers.map(esc).join(',')];
@@ -337,15 +333,9 @@ export default function SheetSyncPanel({
                     <button
                       type="button"
                       onClick={() => exportData('csv')}
-                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
+                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50"
                       title="Export current view as CSV"
                     >CSV</button>
-                    <button
-                      type="button"
-                      onClick={() => exportData('json')}
-                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50"
-                      title="Export current view as JSON"
-                    >JSON</button>
                   </div>
                   {addingField ? (
                     <div className="inline-flex items-center gap-1.5">

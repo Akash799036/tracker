@@ -14,7 +14,7 @@ type Category =
   | 'priority'
   | 'weekly'
   | 'marketing';
-type Format = 'xlsx' | 'csv' | 'json' | 'pdf';
+type Format = 'xlsx' | 'csv' | 'pdf';
 
 const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'all', label: 'All Projects' },
@@ -28,7 +28,6 @@ const CATEGORIES: { value: Category; label: string }[] = [
 const FORMATS: { value: Format; label: string; ext: string }[] = [
   { value: 'xlsx', label: 'Excel (.xlsx)', ext: 'xlsx' },
   { value: 'csv', label: 'CSV (.csv)', ext: 'csv' },
-  { value: 'json', label: 'JSON (.json)', ext: 'json' },
   { value: 'pdf', label: 'PDF (.pdf)', ext: 'pdf' },
 ];
 
@@ -178,8 +177,6 @@ export default function ImportExportDialog({
         XLSX.writeFile(wb, `${baseName}.xlsx`);
       } else if (format === 'csv') {
         download(`${baseName}.csv`, toCSV(filtered), 'text/csv');
-      } else if (format === 'json') {
-        download(`${baseName}.json`, JSON.stringify(filtered, null, 2), 'application/json');
       } else if (format === 'pdf') {
         printPDF(filtered, catLabel);
       }
@@ -212,19 +209,11 @@ export default function ImportExportDialog({
     try {
       setBusy(true);
       let projectsToAdd: Project[] = [];
-      const name = file.name.toLowerCase();
-      if (format === 'json' || name.endsWith('.json')) {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) throw new Error('JSON must be an array of projects');
-        projectsToAdd = parsed as Project[];
-      } else {
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
-        projectsToAdd = parseRows(rows);
-      }
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      projectsToAdd = parseRows(rows);
       if (category !== 'all') {
         projectsToAdd = projectsToAdd.map(p => ({
           ...p,
@@ -241,9 +230,7 @@ export default function ImportExportDialog({
   };
 
   const acceptAttr =
-    format === 'json'
-      ? '.json,application/json'
-      : format === 'csv'
+    format === 'csv'
       ? '.csv,text/csv'
       : '.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
