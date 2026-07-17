@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import {
   SHEET_SYNC_STORAGE_KEY,
@@ -59,6 +60,7 @@ export default function SheetSyncPanel({
   title?: string;
 }) {
   const storageKey = SHEET_SYNC_STORAGE_KEY(pageKey);
+  const searchParams = useSearchParams();
   const [data, setData] = useState<AllProjectsData | null>(null);
   const [ready, setReady] = useState(false);
   const [activeSheet, setActiveSheet] = useState<string>('');
@@ -83,14 +85,57 @@ export default function SheetSyncPanel({
   };
 
   useEffect(() => {
-    const cached = loadCached(storageKey);
-    if (cached) {
-      setData(cached);
-      setActiveSheet(cached.sheets[0]?.name || '');
-    }
+    let cancelled = false;
+
+    // Apply a data payload, keeping the current active sheet if it still exists.
+    const apply = (d: AllProjectsData | null) => {
+      if (cancelled || !d) return;
+      setData(d);
+      setActiveSheet(prev =>
+        prev && d.sheets.some(s => s.name === prev) ? prev : (d.sheets[0]?.name || '')
+      );
+    };
+
+    const readCache = () => loadCached(storageKey);
+
+    // 1) Show whatever is cached immediately (may be null on a fresh load).
+    apply(readCache());
     setOverrides(loadOverrides(pageKey));
     setReady(true);
+
+    // 2) Fetch straight from the API so the panel doesn't depend on AutoSheetSync
+    //    winning the mount race. This populates data even on the very first visit.
+    fetch(`/api/sheet-sync/${pageKey}`, { cache: 'no-store' })
+      .then(res => (res.ok ? res.json() : null))
+      .then((json: AllProjectsData | null) => {
+        if (json && json.sheets?.length) apply(json);
+      })
+      .catch(() => {});
+
+    // 3) Re-read cache when AutoSheetSync (or another tab) refreshes it.
+    const onUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.pageKey && detail.pageKey !== pageKey) return;
+      apply(readCache());
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === storageKey) apply(readCache());
+    };
+    window.addEventListener('sheet-sync:updated', onUpdated);
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('sheet-sync:updated', onUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
   }, [storageKey, pageKey]);
+
+  // Seed the search box from the header search bar (?q=...) and keep it in sync
+  // when the query param changes (e.g. a second header search).
+  useEffect(() => {
+    setQuery(searchParams.get('q') ?? '');
+  }, [searchParams]);
 
   // Load custom fields + values whenever the active sheet changes.
   const loadCustomFields = useCallback(async (sheetName: string) => {

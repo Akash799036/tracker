@@ -1,12 +1,16 @@
 'use client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+
+// Pages that render a searchable data panel (SheetSyncPanel).
+const SEARCHABLE_PAGES = ['/projects', '/live-projects', '/maintenance', '/marketing', '/priority-list'];
 
 export default function Topbar({ onMenu }: { onMenu: () => void }) {
   const [q, setQ] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     const stored = (typeof window !== 'undefined' && localStorage.getItem('pt-theme')) as 'light' | 'dark' | null;
@@ -24,7 +28,10 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
   };
 
   const onSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') router.push(`/projects?q=${encodeURIComponent(q)}`);
+    if (e.key !== 'Enter') return;
+    // Search on the current page if it has a data panel; otherwise fall back to Projects.
+    const target = SEARCHABLE_PAGES.includes(pathname) ? pathname : '/projects';
+    router.push(`${target}?q=${encodeURIComponent(q)}`);
   };
 
   return (
