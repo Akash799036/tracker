@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { AllProjectsData, AllProjectsSheet, SheetRow } from '@/lib/allProjectsTypes';
+import { getPageData, replacePageData } from '@/lib/sheetData';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// The all-projects workbook is stored under the "dashboard" page key (seeded by
+// scripts/seed-sheets.mjs). Reading it back keeps this route off Google Docs at
+// runtime, matching /api/sheet-sync/[page].
+const ALL_PROJECTS_PAGE_KEY = 'dashboard';
 const DEFAULT_SHEET_ID = process.env.ALL_PROJECTS_SHEET_ID || '1F1hcq7Fu3vLcqIt3d0Ns30iz26RjvZRw3lGeDkVhjTM';
 
 function rowsToSheet(name: string, matrix: string[][]): AllProjectsSheet {
@@ -33,18 +38,33 @@ async function fetchWorkbook(sheetId: string): Promise<AllProjectsSheet[]> {
   });
 }
 
+// Data is served from MySQL (seeded via `npm run seed`). The app no longer
+// depends on Google Docs at runtime.
+//
+//   GET /api/all-projects/sync            -> read stored data from the database
+//   GET /api/all-projects/sync?refresh=1  -> re-pull from Google, store, then return
+//       (optionally with &sheetId=... to override the source workbook)
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const sheetId = url.searchParams.get('sheetId') || DEFAULT_SHEET_ID;
+  const refresh = url.searchParams.get('refresh') === '1' || url.searchParams.get('source') === 'google';
+
   try {
-    const sheets = await fetchWorkbook(sheetId);
-    const data: AllProjectsData = {
-      sheets,
-      syncedAt: Date.now(),
-      source: 'google-sheets',
-      sourceName: sheetId,
-    };
-    return NextResponse.json(data);
+    if (refresh) {
+      const sheetId = url.searchParams.get('sheetId') || DEFAULT_SHEET_ID;
+      const sheets = await fetchWorkbook(sheetId);
+      const syncedAt = Date.now();
+      await replacePageData(ALL_PROJECTS_PAGE_KEY, sheets, syncedAt);
+      const data: AllProjectsData = { sheets, syncedAt, source: 'google-sheets', sourceName: sheetId };
+      return NextResponse.json(data);
+    }
+
+    const stored = await getPageData(ALL_PROJECTS_PAGE_KEY);
+    if (stored) return NextResponse.json(stored);
+
+    // Nothing seeded yet — return an empty-but-valid payload so the UI can render
+    // its "no data" state instead of erroring.
+    const empty: AllProjectsData = { sheets: [], syncedAt: 0, source: 'none', sourceName: ALL_PROJECTS_PAGE_KEY };
+    return NextResponse.json(empty);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'sync failed' }, { status: 502 });
   }
