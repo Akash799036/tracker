@@ -39,11 +39,26 @@ function createPool(): mysql.Pool {
   });
 }
 
-export const pool: mysql.Pool = global.__dbPool ?? createPool();
-
-if (process.env.NODE_ENV !== 'production') {
-  global.__dbPool = pool;
+// Lazily create the pool on first use rather than at import time. This keeps
+// `next build` from touching the database (and throwing on missing env vars)
+// while it collects route metadata.
+export function getPool(): mysql.Pool {
+  if (global.__dbPool) return global.__dbPool;
+  const created = createPool();
+  global.__dbPool = created;
+  return created;
 }
+
+// Backwards-compatible `pool` export. It's a Proxy so member access
+// (`pool.query`, `pool.getConnection`, …) resolves the real pool lazily on
+// first use — importing this module never opens a connection or reads env vars.
+export const pool: mysql.Pool = new Proxy({} as mysql.Pool, {
+  get(_target, prop, receiver) {
+    const real = getPool();
+    const value = Reflect.get(real as object, prop, receiver);
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
+});
 
 /**
  * Run a parameterized query and return the typed rows.
@@ -57,6 +72,6 @@ export async function query<T = mysql.RowDataPacket[]>(
   sql: string,
   params?: (string | number | boolean | null | Date)[]
 ): Promise<T> {
-  const [rows] = await pool.execute(sql, params);
+  const [rows] = await getPool().execute(sql, params);
   return rows as T;
 }

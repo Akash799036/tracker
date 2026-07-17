@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
+// Never prerender or collect this at build time — it must run per-request so it
+// doesn't try to reach the database while building.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/db-health — quick check that the DB connection is alive.
 export async function GET() {
   try {
