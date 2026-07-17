@@ -38,11 +38,11 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
         <span className="hidden sm:inline">New Project</span>
         <span className="sm:hidden text-lg leading-none">+</span>
       </Link>
-      <button onClick={toggleTheme} className="theme-toggle shrink-0 h-10 w-10 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white grid place-items-center" aria-label="Toggle theme">
-        {theme === 'dark' ? '☀' : '☾'}
-      </button>
       <button onClick={onMenu} className="lg:hidden p-2 rounded-lg hover:bg-slate-100 shrink-0" aria-label="Menu">
         <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <button onClick={toggleTheme} className="theme-toggle shrink-0 h-10 w-10 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white grid place-items-center" aria-label="Toggle theme">
+        {theme === 'dark' ? '☀' : '☾'}
       </button>
     </header>
   );
