@@ -7,6 +7,7 @@ export type SheetSyncPageKey =
   | 'live-projects'
   | 'priority-list'
   | 'marketing'
+  | 'all-projects'
   | 'dashboard';
 
 export const SHEET_SYNC_STORAGE_KEY = (key: SheetSyncPageKey) => `sheet-sync.${key}.v1`;
@@ -19,6 +20,7 @@ export const PAGE_SHEET_IDS: Record<SheetSyncPageKey, string> = {
   'live-projects':  process.env.LIVE_PROJECTS_SHEET_ID  || '1gJK-Czm-1uS5XriD3WTwr5mWW2Kp6FnOQnMpc6A6gmM',
   'priority-list':  process.env.PRIORITY_LIST_SHEET_ID  || '1h6QyFLz2q6TVNuTA7DhKvtiDaEONQrIYt8U8SH0dt-s',
   'marketing':      process.env.MARKETING_SHEET_ID      || '1RWGRBD9mivKY9JAWLCzLK1aR8NMUgxeyVRv06YW3_xs',
+  'all-projects':   ALL_PROJECTS_FALLBACK,
   'dashboard':      process.env.DASHBOARD_SHEET_ID      || ALL_PROJECTS_FALLBACK,
 };
 

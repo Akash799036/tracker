@@ -11,6 +11,8 @@ import {
   type SheetSyncPageKey,
 } from '@/lib/sheetSync';
 import { download } from '@/lib/ui';
+import { useCustomFields, vkey } from '@/lib/useCustomFields';
+import { AddFieldButton, CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 
 function loadCached(key: string): AllProjectsData | null {
   if (typeof window === 'undefined') return null;
@@ -41,13 +43,6 @@ function fmtTime(ts: number) {
   try { return new Date(ts).toLocaleString(); } catch { return ''; }
 }
 
-// Database-backed custom fields for the active sheet.
-type CustomField = { id: number; pageKey: string; sheetName: string; label: string; position: number };
-type CustomFieldValue = { fieldId: number; rowKey: number; value: string };
-// value lookup keyed as `${fieldId}:${rowKey}`
-type ValueMap = Record<string, string>;
-const vkey = (fieldId: number, rowKey: number) => `${fieldId}:${rowKey}`;
-
 function looksLikeUrl(v: unknown): v is string {
   return typeof v === 'string' && /^https?:\/\//i.test(v.trim());
 }
@@ -71,11 +66,15 @@ export default function SheetSyncPanel({
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
 
   // Custom fields (extra columns) for the active sheet, backed by the database.
-  const [customFields, setCustomFields] = useState<CustomField[]>([]);
-  const [customValues, setCustomValues] = useState<ValueMap>({});
-  const [addingField, setAddingField] = useState(false);
-  const [newFieldLabel, setNewFieldLabel] = useState('');
-  const [customBusy, setCustomBusy] = useState(false);
+  const {
+    fields: customFields,
+    values: customValues,
+    busy: customBusy,
+    error: customError,
+    addField: addCustomField,
+    deleteField: deleteCustomField,
+    setValue: saveCustomValue,
+  } = useCustomFields(pageKey, activeSheet);
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -136,83 +135,6 @@ export default function SheetSyncPanel({
   useEffect(() => {
     setQuery(searchParams.get('q') ?? '');
   }, [searchParams]);
-
-  // Load custom fields + values whenever the active sheet changes.
-  const loadCustomFields = useCallback(async (sheetName: string) => {
-    if (!sheetName) { setCustomFields([]); setCustomValues({}); return; }
-    try {
-      const res = await fetch(
-        `/api/custom-fields/${pageKey}?sheet=${encodeURIComponent(sheetName)}`,
-        { cache: 'no-store' }
-      );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'failed to load fields');
-      const fields = (json.fields || []) as CustomField[];
-      const values = (json.values || []) as CustomFieldValue[];
-      const map: ValueMap = {};
-      for (const v of values) map[vkey(v.fieldId, v.rowKey)] = v.value;
-      setCustomFields(fields);
-      setCustomValues(map);
-    } catch {
-      setCustomFields([]);
-      setCustomValues({});
-    }
-  }, [pageKey]);
-
-  useEffect(() => { loadCustomFields(activeSheet); }, [activeSheet, loadCustomFields]);
-
-  const addCustomField = useCallback(async () => {
-    const label = newFieldLabel.trim();
-    if (!label || !activeSheet) return;
-    setCustomBusy(true);
-    try {
-      const res = await fetch(`/api/custom-fields/${pageKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetName: activeSheet, label }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'failed to add field');
-      setCustomFields(prev => [...prev, json.field as CustomField]);
-      setNewFieldLabel('');
-      setAddingField(false);
-    } catch (e: any) {
-      setError(e?.message || 'failed to add field');
-    } finally {
-      setCustomBusy(false);
-    }
-  }, [newFieldLabel, activeSheet, pageKey]);
-
-  const deleteCustomField = useCallback(async (field: CustomField) => {
-    if (!confirm(`Delete the "${field.label}" field and all its values?`)) return;
-    try {
-      const res = await fetch(`/api/custom-fields/${pageKey}?id=${field.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error || 'failed to delete field');
-      }
-      setCustomFields(prev => prev.filter(f => f.id !== field.id));
-      setCustomValues(prev => {
-        const next = { ...prev };
-        for (const k of Object.keys(next)) if (k.startsWith(`${field.id}:`)) delete next[k];
-        return next;
-      });
-    } catch (e: any) {
-      setError(e?.message || 'failed to delete field');
-    }
-  }, [pageKey]);
-
-  // Persist a single custom-field cell value.
-  const saveCustomValue = useCallback(async (fieldId: number, rowKey: number, value: string) => {
-    setCustomValues(prev => ({ ...prev, [vkey(fieldId, rowKey)]: value }));
-    try {
-      await fetch(`/api/custom-fields/${pageKey}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fieldId, rowKey, value }),
-      });
-    } catch { /* value stays in local state; will re-sync on next load */ }
-  }, [pageKey]);
 
   const sheet: AllProjectsSheet | undefined = useMemo(
     () => data?.sheets.find(s => s.name === activeSheet),
@@ -314,9 +236,9 @@ export default function SheetSyncPanel({
         </div>
       </div>
 
-      {error && (
+      {(error || customError) && (
         <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700">
-          {error}
+          {error || customError}
         </div>
       )}
 
@@ -382,42 +304,7 @@ export default function SheetSyncPanel({
                       title="Export current view as CSV"
                     >CSV</button>
                   </div>
-                  {addingField ? (
-                    <div className="inline-flex items-center gap-1.5">
-                      <input
-                        autoFocus
-                        value={newFieldLabel}
-                        onChange={e => setNewFieldLabel(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') addCustomField();
-                          if (e.key === 'Escape') { setAddingField(false); setNewFieldLabel(''); }
-                        }}
-                        placeholder="Field name…"
-                        className="h-8 w-40 px-2 rounded-lg border border-slate-300 text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={addCustomField}
-                        disabled={customBusy || !newFieldLabel.trim()}
-                        className="h-8 px-2.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
-                      >{customBusy ? 'Adding…' : 'Add'}</button>
-                      <button
-                        type="button"
-                        onClick={() => { setAddingField(false); setNewFieldLabel(''); }}
-                        className="h-8 px-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                      >Cancel</button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setAddingField(true)}
-                      className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg border border-dashed border-indigo-300 text-xs font-semibold text-indigo-700 bg-indigo-50/50 hover:bg-indigo-50"
-                      title="Add a new field (column) to this sheet"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                      Add Field
-                    </button>
-                  )}
+                  <AddFieldButton onAdd={addCustomField} busy={customBusy} />
                 </div>
               </div>
 
@@ -431,20 +318,7 @@ export default function SheetSyncPanel({
                         </th>
                       ))}
                       {customFields.map(f => (
-                        <th key={`cf-${f.id}`} className="text-left font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 bg-indigo-50/40">
-                          <span className="inline-flex items-center gap-1.5">
-                            {f.label}
-                            <button
-                              type="button"
-                              onClick={() => deleteCustomField(f)}
-                              aria-label={`Delete field ${f.label}`}
-                              title="Delete this field"
-                              className="text-slate-400 hover:text-rose-600"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            </button>
-                          </span>
-                        </th>
+                        <CustomFieldHeader key={`cf-${f.id}`} field={f} onDelete={deleteCustomField} />
                       ))}
                       <th className="text-right font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50">
                         Actions
@@ -472,24 +346,13 @@ export default function SheetSyncPanel({
                               </td>
                             );
                           })}
-                          {customFields.map(f => {
-                            const cv = customValues[vkey(f.id, origIdx)] ?? '';
-                            return (
-                              <td key={`cf-${f.id}`} className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
-                                <input
-                                  defaultValue={cv}
-                                  key={cv}
-                                  onBlur={e => {
-                                    const val = e.target.value;
-                                    if (val !== cv) saveCustomValue(f.id, origIdx, val);
-                                  }}
-                                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                  placeholder="—"
-                                  className="w-full min-w-[8rem] px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-indigo-400 focus:bg-white text-sm bg-transparent"
-                                />
-                              </td>
-                            );
-                          })}
+                          {customFields.map(f => (
+                            <CustomFieldCell
+                              key={`cf-${f.id}`}
+                              value={customValues[vkey(f.id, origIdx)] ?? ''}
+                              onSave={val => saveCustomValue(f.id, origIdx, val)}
+                            />
+                          ))}
                           <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
                             {isEditing ? (
                               <>
