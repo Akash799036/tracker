@@ -13,9 +13,11 @@ import {
 import { download } from '@/lib/ui';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
+import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { ReorderableHeader } from './ReorderableHeader';
 import { CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from './AddRowForm';
+import Pagination, { usePagination } from './Pagination';
 
 // Rows, edits and deletes all live in the database now (see /api/sheet-rows).
 // There is no local override layer: an edit one person makes is an edit everyone
@@ -146,6 +148,9 @@ export default function SheetSyncPanel({
     pageKey, activeSheet, sheet?.headers ?? EMPTY
   );
 
+  // Clickable Project Manager cells → drill-down modal.
+  const { renderPMCell, pmModal } = usePMDrilldown(headers);
+
   // Search spans the sheet's own cells and the custom-field columns, so a row is
   // findable by anything visible on it.
   const filteredRows = useMemo(() => {
@@ -157,6 +162,11 @@ export default function SheetSyncPanel({
       return customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q));
     });
   }, [sheet, query, customFields, customValues]);
+
+  // Cap the table at 20 rows; searching or switching sheets returns to page 1.
+  const { page, setPage, totalPages, pageRows, from, to } = usePagination(
+    filteredRows, `${activeSheet}|${query}`
+  );
 
   const beginEdit = (row: SheetRowRecord) => {
     setEditingUid(row.uid);
@@ -389,7 +399,7 @@ export default function SheetSyncPanel({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map(row => {
+                    {pageRows.map(row => {
                       const isEditing = editingUid === row.uid;
                       return (
                         <tr key={row.uid} className="odd:bg-white even:bg-slate-50/40 hover:bg-indigo-50/40">
@@ -405,7 +415,7 @@ export default function SheetSyncPanel({
                                   />
                                 ) : looksLikeUrl(v)
                                   ? <a href={v} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline break-all">{v}</a>
-                                  : toStr(v)}
+                                  : renderPMCell(h, v, toStr(v))}
                               </td>
                             );
                           })}
@@ -460,10 +470,22 @@ export default function SheetSyncPanel({
                   </tbody>
                 </table>
               </div>
+
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                from={from}
+                to={to}
+                total={filteredRows.length}
+                onPageChange={setPage}
+                label="projects"
+              />
             </div>
           )}
         </>
       )}
+
+      {pmModal}
     </section>
   );
 }

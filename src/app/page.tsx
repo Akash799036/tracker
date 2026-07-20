@@ -9,11 +9,13 @@ import {
   aggregatePlatform,
   aggregateStatus,
   classifyStatuses,
+  collectProjectsByPM,
   hydrateFromServer,
   readAllSummaries,
   type PMSummary,
   type PageSummary,
 } from '@/lib/dashboardAggregate';
+import PMProjectsModal from '@/components/PMProjectsModal';
 
 function fmtTime(ts: number | null) {
   if (!ts) return 'Not synced yet';
@@ -153,9 +155,14 @@ function PMAvatar({ name, size = 26 }: { name: string; size?: number }) {
 }
 
 /** Leaderboard row: one PM, their total, and their category split. */
-function PMRow({ pm, max }: { pm: PMSummary; max: number }) {
+function PMRow({ pm, max, onOpen }: { pm: PMSummary; max: number; onOpen: () => void }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-colors">
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`View ${pm.name}'s projects`}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+    >
       <PMAvatar name={pm.name} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
@@ -172,7 +179,7 @@ function PMRow({ pm, max }: { pm: PMSummary; max: number }) {
           {pm.categories.map(c => `${c.category} ${c.count}`).join(' · ')}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -237,6 +244,13 @@ export default function Dashboard() {
   const categories = useMemo(() => aggregateByCategory(categorySummaries), [categorySummaries]);
   const pmSummaries = useMemo(() => aggregateByPM(categories), [categories]);
   const pmMax = pmSummaries[0]?.total ?? 0;
+
+  // Rows behind each PM, for the drill-down modal.
+  const pmProjects = useMemo(() => collectProjectsByPM(categorySummaries), [categorySummaries]);
+  const [openPM, setOpenPM] = useState<string | null>(null);
+  // Look the PM up by name rather than holding the object, so the modal keeps
+  // showing fresh rows as the 5s refresh replaces the data underneath it.
+  const activePM = openPM ? pmProjects.get(openPM) ?? null : null;
 
   const totalRows = useMemo(() => summaries.reduce((s, x) => s + x.totalRows, 0), [summaries]);
   const syncedPages = summaries.filter(s => s.syncedAt).length;
@@ -334,7 +348,7 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-0.5 max-h-[420px] overflow-y-auto pr-1">
               {pmSummaries.map(pm => (
-                <PMRow key={pm.name} pm={pm} max={pmMax} />
+                <PMRow key={pm.name} pm={pm} max={pmMax} onOpen={() => setOpenPM(pm.name)} />
               ))}
             </div>
           )}
@@ -418,6 +432,8 @@ export default function Dashboard() {
           </section>
         </div>
       </div>
+
+      <PMProjectsModal pm={activePM} onClose={() => setOpenPM(null)} />
     </div>
   );
 }

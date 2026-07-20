@@ -186,7 +186,11 @@ function firstNameKey(name: string): string {
  * find 'Sibam Sinha' over in Wordpress, or one person lands on the
  * leaderboard twice.
  */
-function buildPMCanonicalMap(allNames: Iterable<string>): Map<string, string> {
+function buildPMCanonicalMap(names: Iterable<string>): Map<string, string> {
+  // Materialise up front: this walks `names` twice, so a one-shot iterator
+  // (map.keys(), a generator) would come up empty on the second pass and
+  // silently return a map that folds nothing.
+  const allNames = [...names];
   // Pass 1: group full names by first-name + vowel-stripped surname.
   const groups = new Map<string, string[]>();
   for (const name of allNames) {
@@ -251,6 +255,10 @@ const NON_PROJECT_SHEETS = new Set(['servers', 'sheet1']);
  */
 export function aggregateByCategory(summaries: PageSummary[]): CategoryPM[] {
   const byCategory = new Map<string, CategoryPM & { counts: Map<string, number> }>();
+  // 'dashboard' and 'all-projects' are the same workbook behind two source
+  // keys, so each of its rows shows up twice. Row uids are globally unique —
+  // count each only once or those categories report double their real size.
+  const seenRows = new Set<string>();
 
   for (const sum of summaries) {
     if (!sum.data) continue;
@@ -279,6 +287,8 @@ export function aggregateByCategory(summaries: PageSummary[]): CategoryPM[] {
 
       for (const row of sheet.rows) {
         if (row.hidden) continue;
+        if (seenRows.has(row.uid)) continue;
+        seenRows.add(row.uid);
         entry.total += 1;
         const pm = normalizePM(row.cells[pmKey]);
         if (!pm) { entry.unassigned += 1; continue; }
@@ -329,6 +339,130 @@ export function aggregateByPM(categories: CategoryPM[]): PMSummary[] {
     entry.categories.sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
   }
   return [...byPM.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+}
+
+/* ---------------- PM project drill-down ---------------- */
+
+export type PMProject = {
+  /** Stable row identity, survives re-sync. */
+  uid: string;
+  /** Sheet/tab name — the project category. */
+  category: string;
+  /** Page this row lives on, for the deep link. */
+  href: string;
+  sourceLabel: string;
+  /** Best-guess project title for the row. */
+  title: string;
+  /** Every column on the row, for the detail view. */
+  cells: SheetRow;
+  /** Column order as the sheet defines it, so details read like the table. */
+  headers: string[];
+};
+
+export type PMProjects = {
+  name: string;
+  total: number;
+  projects: PMProject[];
+};
+
+// Header candidates for the row's display title, best first.
+const NAME_KEYS = ['project name', 'project', 'name', 'client name', 'client', 'domain name', 'domain', 'website'];
+
+/**
+ * Collect the actual project rows for every PM — the leaderboard keeps only
+ * counts, but the drill-down modal needs the rows themselves.
+ *
+ * Mirrors `aggregateByCategory`'s filtering (same PM column lookup, same
+ * non-project tabs skipped, same hidden-row skip) and re-uses one global
+ * canonical map, so `total` here always equals the leaderboard's total. If you
+ * change the filtering in either place, change it in both or the modal will
+ * disagree with the number the user clicked on.
+ */
+export function collectProjectsByPM(summaries: PageSummary[]): Map<string, PMProjects> {
+  // Pass 1: gather rows keyed by their raw (normalised-but-not-canonical) name.
+  const byRawName = new Map<string, PMProject[]>();
+  // The 'dashboard' workbook is the same spreadsheet as 'all-projects', so its
+  // rows arrive twice under two source keys. Row uids are globally unique, so
+  // keep the first sighting of each and drop the rest — otherwise every project
+  // in that workbook is listed (and counted) double.
+  const seenRows = new Set<string>();
+
+  for (const sum of summaries) {
+    if (!sum.data) continue;
+    for (const sheet of sum.data.sheets) {
+      if (!sheet.rows.length) continue;
+      if (NON_PROJECT_SHEETS.has(sheet.name.trim().toLowerCase())) continue;
+
+      const pmKey = findKey(sheet.rows[0].cells, PM_KEYS);
+      if (!pmKey) continue;
+
+      const nameKey = findKey(sheet.rows[0].cells, NAME_KEYS);
+      const category = sheet.name.trim();
+
+      for (const row of sheet.rows) {
+        if (row.hidden) continue;
+        if (seenRows.has(row.uid)) continue;
+        const pm = normalizePM(row.cells[pmKey]);
+        if (!pm) continue;
+        seenRows.add(row.uid);
+
+        const rawTitle = nameKey == null ? '' : String(row.cells[nameKey] ?? '').trim();
+        const list = byRawName.get(pm);
+        const project: PMProject = {
+          uid: row.uid,
+          category,
+          href: sum.source.href,
+          sourceLabel: sum.source.label,
+          title: rawTitle || 'Untitled project',
+          cells: row.cells,
+          headers: sheet.headers,
+        };
+        if (list) list.push(project); else byRawName.set(pm, [project]);
+      }
+    }
+  }
+
+  // Pass 2: fold the spelling variants together exactly as the leaderboard does.
+  // Must be an array, not `byRawName.keys()` — buildPMCanonicalMap iterates its
+  // argument twice, and a one-shot map iterator is empty by the second pass,
+  // which silently returns an empty map and leaves every variant unfolded.
+  const canon = buildPMCanonicalMap([...byRawName.keys()]);
+  const out = new Map<string, PMProjects>();
+  for (const [raw, projects] of byRawName) {
+    const name = canon.get(raw) ?? raw;
+    const entry = out.get(name);
+    if (entry) entry.projects.push(...projects);
+    else out.set(name, { name, total: 0, projects: [...projects] });
+  }
+  for (const entry of out.values()) {
+    entry.projects.sort(
+      (a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title)
+    );
+    entry.total = entry.projects.length;
+  }
+  return out;
+}
+
+/**
+ * Resolve a raw PM cell ('sibam', 'Pinak Chowdhury') to the canonical name used
+ * as the key of `collectProjectsByPM`. Tables render raw sheet values, so they
+ * need this to look a PM up; returns null when the cell is empty or unknown.
+ */
+export function resolvePMName(raw: unknown, index: Map<string, PMProjects>): string | null {
+  const pm = normalizePM(raw);
+  if (!pm) return null;
+  if (index.has(pm)) return pm;
+  // Fall back to the same fingerprint fold the aggregation uses, so a variant
+  // spelling in one sheet still finds the canonical bucket.
+  const canon = buildPMCanonicalMap([...index.keys(), pm]).get(pm);
+  return canon && index.has(canon) ? canon : null;
+}
+
+/** Locate the Project Manager column in a set of sheet headers, if present. */
+export function findPMHeader(headers: string[]): string | null {
+  if (!headers.length) return null;
+  const row = Object.fromEntries(headers.map(h => [h, ''])) as SheetRow;
+  return findKey(row, PM_KEYS);
 }
 
 export function classifyStatuses(map: Map<string, number>) {
