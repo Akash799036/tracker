@@ -19,7 +19,8 @@ export type CustomField = {
 
 export type CustomFieldValue = {
   fieldId: number;
-  rowKey: number;
+  /** Stable row identity. Values are keyed by this, not by row position. */
+  rowUid: string;
   value: string;
 };
 
@@ -75,11 +76,15 @@ export async function listValues(fieldIds: number[]): Promise<CustomFieldValue[]
   if (!fieldIds.length) return [];
   await ensureTables();
   const placeholders = fieldIds.map(() => '?').join(',');
-  const rows = await query<(RowDataPacket & { field_id: number; row_key: number; value: string | null })[]>(
-    `SELECT field_id, row_key, value FROM custom_field_values WHERE field_id IN (${placeholders})`,
+  // Values written before the row-identity migration have no row_uid; skip them
+  // rather than guessing which row they meant. `npm run migrate` backfills them.
+  const rows = await query<(RowDataPacket & { field_id: number; row_uid: string | null; value: string | null })[]>(
+    `SELECT field_id, row_uid, value
+       FROM custom_field_values
+      WHERE field_id IN (${placeholders}) AND row_uid IS NOT NULL`,
     fieldIds
   );
-  return rows.map(r => ({ fieldId: r.field_id, rowKey: r.row_key, value: r.value ?? '' }));
+  return rows.map(r => ({ fieldId: r.field_id, rowUid: r.row_uid as string, value: r.value ?? '' }));
 }
 
 export async function addField(pageKey: string, sheetName: string, label: string): Promise<CustomField> {
@@ -114,16 +119,40 @@ async function fieldBelongsToPage(fieldId: number, pageKey: string): Promise<boo
   return rows.length > 0;
 }
 
+/**
+ * Store one cell value, keyed by the row's stable uid.
+ *
+ * Both the field and the row must belong to the given page. row_key is still
+ * written because it is half the legacy primary key, but it only mirrors the
+ * row's current position — identity lives in row_uid, and an UPDATE-then-INSERT
+ * on row_uid is what keeps a moved row from growing a second value row.
+ */
 export async function setValue(
-  pageKey: string, fieldId: number, rowKey: number, value: string
+  pageKey: string, fieldId: number, rowUid: string, value: string
 ): Promise<boolean> {
   await ensureTables();
   if (!(await fieldBelongsToPage(fieldId, pageKey))) return false;
+
+  const rows = await query<(RowDataPacket & { row_index: number })[]>(
+    `SELECT r.row_index FROM sheet_rows r
+       JOIN sheet_tabs t ON t.id = r.tab_id
+      WHERE r.row_uid = ? AND t.page_key = ? LIMIT 1`,
+    [rowUid, pageKey]
+  );
+  if (!rows.length) return false;
+  const rowKey = rows[0].row_index;
+
+  const updated = await query<ResultSetHeader>(
+    'UPDATE custom_field_values SET value = ?, row_key = ? WHERE field_id = ? AND row_uid = ?',
+    [value, rowKey, fieldId, rowUid]
+  );
+  if (updated.affectedRows > 0) return true;
+
   await query<ResultSetHeader>(
-    `INSERT INTO custom_field_values (field_id, row_key, value)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE value = VALUES(value)`,
-    [fieldId, rowKey, value]
+    `INSERT INTO custom_field_values (field_id, row_key, row_uid, value)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE value = VALUES(value), row_uid = VALUES(row_uid)`,
+    [fieldId, rowKey, rowUid, value]
   );
   return true;
 }

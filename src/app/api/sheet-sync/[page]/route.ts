@@ -1,24 +1,25 @@
 import { NextResponse } from 'next/server';
-import { PAGE_SHEET_IDS, isValidPageKey, type AllProjectsData, type AllProjectsSheet, type SheetRow } from '@/lib/sheetSync';
+import { PAGE_SHEET_IDS, isValidPageKey, type AllProjectsData } from '@/lib/sheetSync';
+import type { RawSheet } from '@/lib/allProjectsTypes';
 import { getPageData, replacePageData } from '@/lib/sheetData';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function rowsToSheet(name: string, matrix: string[][]): AllProjectsSheet {
+function rowsToSheet(name: string, matrix: string[][]): RawSheet {
   if (!matrix.length) return { name, headers: [], rows: [] };
   const headers = matrix[0].map((h, i) => (h || '').toString().trim() || `Column ${i + 1}`);
-  const rows: SheetRow[] = matrix.slice(1)
+  const rows: Record<string, string>[] = matrix.slice(1)
     .filter(r => r.some(v => v != null && String(v).trim().length))
     .map(r => {
-      const obj: SheetRow = {};
+      const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = (r[i] ?? '').toString(); });
       return obj;
     });
   return { name, headers, rows };
 }
 
-async function fetchWorkbook(sheetId: string): Promise<AllProjectsSheet[]> {
+async function fetchWorkbook(sheetId: string): Promise<RawSheet[]> {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
   const res = await fetch(url, { cache: 'no-store', redirect: 'follow' });
   if (!res.ok) throw new Error(`Google Sheets export failed (${res.status}). Make sure the sheet is shared as "Anyone with the link: Viewer".`);
@@ -53,8 +54,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       const sheets = await fetchWorkbook(sheetId);
       const syncedAt = Date.now();
       await replacePageData(pageKey, sheets, syncedAt);
-      const data: AllProjectsData = { sheets, syncedAt, source: 'google-sheets', sourceName: sheetId };
-      return NextResponse.json(data);
+      // Read back rather than returning what we just parsed: the stored rows
+      // carry their row_uid and any user edits, which the raw workbook does not.
+      const data = await getPageData(pageKey);
+      return NextResponse.json(
+        data ?? ({ sheets: [], syncedAt, source: 'google-sheets', sourceName: sheetId } as AllProjectsData)
+      );
     }
 
     const stored = await getPageData(pageKey);

@@ -1,30 +1,29 @@
 import { NextResponse } from 'next/server';
-import type { AllProjectsData, AllProjectsSheet, SheetRow } from '@/lib/allProjectsTypes';
+import { ALL_PROJECTS_PAGE_KEY, type AllProjectsData, type RawSheet } from '@/lib/allProjectsTypes';
 import { getPageData, replacePageData } from '@/lib/sheetData';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// The all-projects workbook is stored under the "dashboard" page key (seeded by
-// scripts/seed-sheets.mjs). Reading it back keeps this route off Google Docs at
-// runtime, matching /api/sheet-sync/[page].
-const ALL_PROJECTS_PAGE_KEY = 'dashboard';
+// Reading the stored workbook back keeps this route off Google Docs at runtime,
+// matching /api/sheet-sync/[page]. ALL_PROJECTS_PAGE_KEY is shared with the page
+// component so rows and custom fields stay on the same page key.
 const DEFAULT_SHEET_ID = process.env.ALL_PROJECTS_SHEET_ID || '1F1hcq7Fu3vLcqIt3d0Ns30iz26RjvZRw3lGeDkVhjTM';
 
-function rowsToSheet(name: string, matrix: string[][]): AllProjectsSheet {
+function rowsToSheet(name: string, matrix: string[][]): RawSheet {
   if (!matrix.length) return { name, headers: [], rows: [] };
   const headers = matrix[0].map((h, i) => (h || '').toString().trim() || `Column ${i + 1}`);
-  const rows: SheetRow[] = matrix.slice(1)
+  const rows: Record<string, string>[] = matrix.slice(1)
     .filter(r => r.some(v => v != null && String(v).trim().length))
     .map(r => {
-      const obj: SheetRow = {};
+      const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = (r[i] ?? '').toString(); });
       return obj;
     });
   return { name, headers, rows };
 }
 
-async function fetchWorkbook(sheetId: string): Promise<AllProjectsSheet[]> {
+async function fetchWorkbook(sheetId: string): Promise<RawSheet[]> {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
   const res = await fetch(url, { cache: 'no-store', redirect: 'follow' });
   if (!res.ok) throw new Error(`Google Sheets export failed (${res.status}). Make sure the sheet is shared as "Anyone with the link: Viewer".`);
@@ -54,8 +53,11 @@ export async function GET(req: Request) {
       const sheets = await fetchWorkbook(sheetId);
       const syncedAt = Date.now();
       await replacePageData(ALL_PROJECTS_PAGE_KEY, sheets, syncedAt);
-      const data: AllProjectsData = { sheets, syncedAt, source: 'google-sheets', sourceName: sheetId };
-      return NextResponse.json(data);
+      // Read back so the response carries row uids and any user edits.
+      const data = await getPageData(ALL_PROJECTS_PAGE_KEY);
+      return NextResponse.json(
+        data ?? ({ sheets: [], syncedAt, source: 'google-sheets', sourceName: sheetId } as AllProjectsData)
+      );
     }
 
     const stored = await getPageData(ALL_PROJECTS_PAGE_KEY);

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed": "node scripts/seed-sheets.mjs"
+    "seed": "node scripts/seed-sheets.mjs",
+    "migrate": "node scripts/migrate-row-uids.mjs"
   },
   "dependencies": {
     "mysql2": "^3.23.0",
