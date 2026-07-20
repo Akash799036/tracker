@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { ALL_PROJECTS_PAGE_KEY, type AllProjectsData, type RawSheet } from '@/lib/allProjectsTypes';
 import { getPageData, replacePageData } from '@/lib/sheetData';
+import { isAuthenticated } from '@/lib/apiAuth';
+import { redactSensitiveCells } from '@/lib/sensitiveCells';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -47,6 +49,13 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const refresh = url.searchParams.get('refresh') === '1' || url.searchParams.get('source') === 'google';
 
+  // Public route: anonymous callers get every row with credential columns
+  // blanked. Both return paths go through `serve` — see the note in
+  // /api/sheet-sync/[page] about ?refresh=1 bypassing redaction.
+  const authed = await isAuthenticated();
+  const serve = (data: AllProjectsData) =>
+    NextResponse.json(authed ? data : redactSensitiveCells(data));
+
   try {
     if (refresh) {
       const sheetId = url.searchParams.get('sheetId') || DEFAULT_SHEET_ID;
@@ -55,13 +64,13 @@ export async function GET(req: Request) {
       await replacePageData(ALL_PROJECTS_PAGE_KEY, sheets, syncedAt);
       // Read back so the response carries row uids and any user edits.
       const data = await getPageData(ALL_PROJECTS_PAGE_KEY);
-      return NextResponse.json(
+      return serve(
         data ?? ({ sheets: [], syncedAt, source: 'google-sheets', sourceName: sheetId } as AllProjectsData)
       );
     }
 
     const stored = await getPageData(ALL_PROJECTS_PAGE_KEY);
-    if (stored) return NextResponse.json(stored);
+    if (stored) return serve(stored);
 
     // Nothing seeded yet — return an empty-but-valid payload so the UI can render
     // its "no data" state instead of erroring.

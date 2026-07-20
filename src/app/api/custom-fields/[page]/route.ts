@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/apiAuth';
 import { isValidPageKey } from '@/lib/sheetSync';
 import {
   listFields, listValues, addField, deleteField, setValue, reorderFields,
@@ -36,6 +37,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
 
 // POST /api/custom-fields/:page  { sheetName, label }
 export async function POST(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const denied = await requireSession();
+  if (denied) return denied;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
@@ -55,6 +58,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ page: s
 //   { sheetName, order: number[] }     — reorder this sheet's fields
 //   { fieldId, rowUid, value }         — set one cell value
 export async function PATCH(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const denied = await requireSession();
+  if (denied) return denied;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
@@ -100,6 +105,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ page: 
 
 // DELETE /api/custom-fields/:page?id=123
 export async function DELETE(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const denied = await requireSession();
+  if (denied) return denied;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {

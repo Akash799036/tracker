@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/apiAuth';
 import { isValidPageKey } from '@/lib/sheetSync';
 import { setHeaderOrder } from '@/lib/sheetData';
 
@@ -11,6 +12,8 @@ export const revalidate = 0;
 // There is no GET: the order is already baked into the headers array that
 // /api/sheet-sync returns, so the client never needs to fetch it separately.
 export async function PUT(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const denied = await requireSession();
+  if (denied) return denied;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) {
     return NextResponse.json({ error: `unknown page "${pageKey}"` }, { status: 404 });
