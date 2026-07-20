@@ -156,27 +156,25 @@ function PMAvatar({ name, size = 26 }: { name: string; size?: number }) {
 
 /** Leaderboard row: one PM, their total, and their category split. */
 function PMRow({ pm, max, onOpen }: { pm: PMSummary; max: number; onOpen: () => void }) {
+  const split = pm.categories.map(c => `${c.category} ${c.count}`).join(' · ');
   return (
     <button
       type="button"
       onClick={onOpen}
-      title={`View ${pm.name}'s projects`}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+      title={`${pm.name} — ${pm.total} project${pm.total === 1 ? '' : 's'}${split ? `\n${split}` : ''}`}
+      className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
     >
-      <PMAvatar name={pm.name} />
+      <PMAvatar name={pm.name} size={20} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[12px] font-semibold text-slate-900 truncate">{pm.name}</span>
-          <span className="shrink-0 text-[12px] font-bold tabular-nums text-slate-900">{pm.total}</span>
+          <span className="text-[11.5px] font-semibold text-slate-900 truncate">{pm.name}</span>
+          <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-slate-900">{pm.total}</span>
         </div>
-        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-500/10">
+        <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-slate-500/10">
           <div
             className="h-full rounded-full"
             style={{ width: `${(pm.total / max) * 100}%`, background: pmColor(pm.name) }}
           />
-        </div>
-        <div className="mt-1 truncate text-[10px] text-slate-500">
-          {pm.categories.map(c => `${c.category} ${c.count}`).join(' · ')}
         </div>
       </div>
     </button>
@@ -335,18 +333,15 @@ export default function Dashboard() {
 
       {/* Project managers */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <section className="glass rounded-2xl p-4 lg:col-span-12">
-          <div className="flex items-baseline justify-between mb-3">
-            <div>
-              <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Project Managers</h2>
-              <p className="mt-0.5 text-[10.5px] text-slate-500">Total projects managed</p>
-            </div>
-            <span className="text-[10.5px] text-slate-500">{pmSummaries.length}</span>
+        <section className="glass rounded-2xl p-3 lg:col-span-12">
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Project Managers</h2>
+            <span className="text-[10.5px] text-slate-500">{pmSummaries.length} · total projects managed</span>
           </div>
           {pmSummaries.length === 0 ? (
-            <div className="py-10 text-center text-[11.5px] italic text-slate-500">No PM data yet</div>
+            <div className="py-6 text-center text-[11.5px] italic text-slate-500">No PM data yet</div>
           ) : (
-            <div className="space-y-0.5 max-h-[420px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-3 gap-y-0.5 max-h-[220px] overflow-y-auto pr-1">
               {pmSummaries.map(pm => (
                 <PMRow key={pm.name} pm={pm} max={pmMax} onOpen={() => setOpenPM(pm.name)} />
               ))}
