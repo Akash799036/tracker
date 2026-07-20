@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { moveItem, sameOrder } from './reorder';
 
 // Client-side state for the database-backed custom fields (extra columns) that
 // any sheet table can render. Scoped to (pageKey, sheetName) to match the API.
@@ -98,6 +99,38 @@ export function useCustomFields(pageKey: string, sheetName: string) {
     }
   }, [pageKey]);
 
+  /**
+   * Move one field to a new index, persisting the whole resulting order.
+   *
+   * Applied locally first so the column moves under the cursor with no network
+   * round-trip. On failure the previous order is restored, since unlike a cell
+   * edit a silently-dropped reorder would leave the screen disagreeing with the
+   * database until the next sheet switch.
+   */
+  const reorderFields = useCallback(async (from: number, to: number) => {
+    if (!sheetName) return;
+    let prevOrder: CustomField[] = [];
+    let nextOrder: CustomField[] = [];
+    setFields(prev => {
+      prevOrder = prev;
+      nextOrder = moveItem(prev, from, to);
+      return nextOrder;
+    });
+    if (sameOrder(prevOrder, nextOrder)) return;
+
+    try {
+      const res = await fetch(`/api/custom-fields/${pageKey}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetName, order: nextOrder.map(f => f.id) }),
+      });
+      if (!res.ok) throw new Error('failed to reorder');
+    } catch {
+      setFields(prevOrder);
+      setError('Could not save the new field order.');
+    }
+  }, [pageKey, sheetName]);
+
   /** Persist a single cell value, optimistically updating local state first. */
   const setValue = useCallback(async (fieldId: number, rowUid: string, value: string) => {
     setValues(prev => ({ ...prev, [vkey(fieldId, rowUid)]: value }));
@@ -110,5 +143,5 @@ export function useCustomFields(pageKey: string, sheetName: string) {
     } catch { /* value stays in local state; will re-sync on next load */ }
   }, [pageKey]);
 
-  return { fields, values, busy, error, addField, deleteField, setValue };
+  return { fields, values, busy, error, addField, deleteField, setValue, reorderFields };
 }

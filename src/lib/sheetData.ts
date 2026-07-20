@@ -9,6 +9,7 @@ import {
   ensureTables as ensureTablesShared,
   syncPageData,
   parseJson,
+  applyHeaderOrder,
   USER_ROW_INDEX_BASE,
 } from '../../scripts/lib/sheetStore.mjs';
 
@@ -65,9 +66,10 @@ type StoredRow = RowDataPacket & {
 export async function getPageData(pageKey: string): Promise<AllProjectsData | null> {
   await ensureSheetTables();
   const tabs = await query<(RowDataPacket & {
-    id: number; sheet_name: string; position: number; headers: unknown; synced_at: number;
+    id: number; sheet_name: string; position: number; headers: unknown;
+    header_order: unknown; synced_at: number;
   })[]>(
-    `SELECT id, sheet_name, position, headers, synced_at
+    `SELECT id, sheet_name, position, headers, header_order, synced_at
        FROM sheet_tabs WHERE page_key = ? ORDER BY position ASC, id ASC`,
     [pageKey]
   );
@@ -77,7 +79,14 @@ export async function getPageData(pageKey: string): Promise<AllProjectsData | nu
   let syncedAt = 0;
   for (const tab of tabs) {
     syncedAt = Math.max(syncedAt, Number(tab.synced_at) || 0);
-    const headers = parseJson(tab.headers, []) as string[];
+    // The workbook order, permuted by the user's stored preference. Applying it
+    // here — the one place every consumer's headers array is built — is what
+    // makes both table renderers and the ?refresh=1 read-back agree, without
+    // touching row data: cells are looked up by header name, never by index.
+    const headers = applyHeaderOrder(
+      parseJson(tab.headers, []) as string[],
+      parseJson(tab.header_order, null) as string[] | null
+    );
     const rowRows = await query<StoredRow[]>(
       `SELECT row_uid, origin, hidden, cells, cells_override
          FROM sheet_rows
@@ -98,6 +107,34 @@ export async function getPageData(pageKey: string): Promise<AllProjectsData | nu
   }
 
   return { sheets, syncedAt, source: 'google-sheets', sourceName: pageKey };
+}
+
+/**
+ * Store a user's preferred column order for one sheet's built-in headers.
+ *
+ * Persisted as header NAMES so the preference survives the workbook gaining or
+ * losing a column; `applyHeaderOrder` reconciles the drift on read. Writing to
+ * `header_order` is safe across a re-sync because the sync upsert only ever
+ * updates position, headers and synced_at.
+ *
+ * Rejects names that aren't currently headers of that sheet, so a stale client
+ * can't write an order the renderer would then have to discard wholesale.
+ */
+export async function setHeaderOrder(
+  pageKey: string, sheetName: string, order: string[]
+): Promise<boolean> {
+  await ensureSheetTables();
+  const tab = await findTab(pageKey, sheetName);
+  if (!tab) return false;
+  const known = new Set(tab.headers);
+  if (order.some(h => !known.has(h))) return false;
+  if (new Set(order).size !== order.length) return false;
+
+  await query<ResultSetHeader>(
+    'UPDATE sheet_tabs SET header_order = ? WHERE page_key = ? AND sheet_name = ?',
+    [JSON.stringify(order), pageKey, sheetName]
+  );
+  return true;
 }
 
 /** Resolve a tab, confirming it belongs to the given page. */

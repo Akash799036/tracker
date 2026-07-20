@@ -12,6 +12,8 @@ import {
 } from '@/lib/sheetSync';
 import { download } from '@/lib/ui';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
+import { useHeaderOrder } from '@/lib/useHeaderOrder';
+import { ReorderableHeader } from './ReorderableHeader';
 import { useRowExtras } from '@/lib/useRowExtras';
 import { AddFieldButton, CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from './AddRowForm';
@@ -65,6 +67,7 @@ export default function SheetSyncPanel({
     addField: addCustomField,
     deleteField: deleteCustomField,
     setValue: saveCustomValue,
+    reorderFields: reorderCustomFields,
   } = useCustomFields(pageKey, activeSheet);
 
   // Per-row ad-hoc fields for the active sheet.
@@ -150,6 +153,14 @@ export default function SheetSyncPanel({
   const sheet: AllProjectsSheet | undefined = useMemo(
     () => data?.sheets.find(s => s.name === activeSheet),
     [data, activeSheet]
+  );
+
+  // Column order for the sheet's own (synced) columns. The server already
+  // applies the stored order, so `headers` matches `sheet.headers` except while
+  // a local move is still in flight.
+  const EMPTY: string[] = useMemo(() => [], []);
+  const { headers, reorderHeaders, orderError } = useHeaderOrder(
+    pageKey, activeSheet, sheet?.headers ?? EMPTY
   );
 
   // Search spans the sheet's own cells, the custom-field columns and the per-row
@@ -255,8 +266,10 @@ export default function SheetSyncPanel({
   const exportData = (format: 'xlsx' | 'csv') => {
     if (!sheet) return;
     // Merge custom-field columns and every extras label into the exported view.
-    const headers = [
-      ...sheet.headers,
+    // Built from the reordered `headers`, not the raw sheet order, so an export
+    // matches the column order on screen.
+    const exportHeaders = [
+      ...headers,
       ...customFields.map(f => f.label),
       ...extraLabels,
     ];
@@ -269,13 +282,13 @@ export default function SheetSyncPanel({
     const baseName = `${pageKey}-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const lines = [headers.map(esc).join(',')];
-      rows.forEach(r => lines.push(headers.map(h => esc(r[h])).join(',')));
+      const lines = [exportHeaders.map(esc).join(',')];
+      rows.forEach(r => lines.push(exportHeaders.map(h => esc(r[h])).join(',')));
       download(`${baseName}.csv`, lines.join('\n'), 'text/csv');
       return;
     }
-    const aoa: (string | number | boolean)[][] = [headers.slice()];
-    rows.forEach(r => aoa.push(headers.map(h => (r[h] == null ? '' : String(r[h])))));
+    const aoa: (string | number | boolean)[][] = [exportHeaders.slice()];
+    rows.forEach(r => aoa.push(exportHeaders.map(h => (r[h] == null ? '' : String(r[h])))));
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
@@ -299,9 +312,9 @@ export default function SheetSyncPanel({
         </div>
       </div>
 
-      {(error || customError || extrasError) && (
+      {(error || customError || extrasError || orderError) && (
         <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700">
-          {error || customError || extrasError}
+          {error || customError || extrasError || orderError}
         </div>
       )}
 
@@ -376,13 +389,27 @@ export default function SheetSyncPanel({
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50 text-slate-600 sticky top-0">
                     <tr>
-                      {sheet.headers.map(h => (
-                        <th key={h} className="text-left font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200">
+                      {headers.map((h, i) => (
+                        <ReorderableHeader
+                          key={h}
+                          index={i}
+                          count={headers.length}
+                          group="sheet-header"
+                          label={h}
+                          onMove={reorderHeaders}
+                        >
                           {h}
-                        </th>
+                        </ReorderableHeader>
                       ))}
-                      {customFields.map(f => (
-                        <CustomFieldHeader key={`cf-${f.id}`} field={f} onDelete={deleteCustomField} />
+                      {customFields.map((f, i) => (
+                        <CustomFieldHeader
+                          key={`cf-${f.id}`}
+                          field={f}
+                          index={i}
+                          count={customFields.length}
+                          onMove={reorderCustomFields}
+                          onDelete={deleteCustomField}
+                        />
                       ))}
                       {/* Pinned beside Actions: on a wide sheet these columns
                           would otherwise sit past the right edge, leaving the
@@ -400,7 +427,7 @@ export default function SheetSyncPanel({
                       const isEditing = editingUid === row.uid;
                       return (
                         <tr key={row.uid} className="odd:bg-white even:bg-slate-50/40 hover:bg-indigo-50/40">
-                          {sheet.headers.map(h => {
+                          {headers.map(h => {
                             const v = row.cells[h];
                             return (
                               <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate">
@@ -459,7 +486,7 @@ export default function SheetSyncPanel({
                     })}
                     {addingRow && (
                       <AddRowFormRow
-                        headers={sheet.headers}
+                        headers={headers}
                         trailingCols={customFields.length + 1}
                         busy={rowBusy}
                         onSave={addRow}
@@ -469,7 +496,7 @@ export default function SheetSyncPanel({
                     )}
                     {filteredRows.length === 0 && !addingRow && (
                       <tr>
-                        <td colSpan={(sheet.headers.length || 1) + customFields.length + 2} className="px-3 py-6 text-center text-slate-500">
+                        <td colSpan={(headers.length || 1) + customFields.length + 2} className="px-3 py-6 text-center text-slate-500">
                           {totalRows === 0 ? 'No rows yet. Use Add Row to create one.' : 'No matching rows.'}
                         </td>
                       </tr>

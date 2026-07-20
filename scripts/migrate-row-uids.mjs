@@ -130,6 +130,7 @@ async function main() {
     'created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
   await addColumn(conn, 'sheet_rows', 'updated_at',
     'updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+  await addColumn(conn, 'sheet_tabs', 'header_order', 'header_order JSON NULL AFTER headers');
   await addColumn(conn, 'custom_field_values', 'row_uid', 'row_uid CHAR(36) NULL AFTER row_key');
   await addIndex(conn, 'custom_field_values', 'idx_cfv_row_uid', 'KEY idx_cfv_row_uid (row_uid)');
 

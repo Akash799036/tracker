@@ -11,6 +11,12 @@ export declare function parseJson<T>(value: unknown, fallback: T): T;
 
 export declare function ensureTables(conn: Conn): Promise<void>;
 
+/** Permute `headers` by a stored order of header names, reconciling drift. */
+export declare function applyHeaderOrder(
+  headers: string[],
+  order: string[] | null | undefined
+): string[];
+
 export type SyncReport = {
   tabs: number;
   rows: number;

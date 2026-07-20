@@ -12,6 +12,8 @@ import {
 import { download } from '@/lib/ui';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
+import { useHeaderOrder } from '@/lib/useHeaderOrder';
+import { ReorderableHeader } from '@/components/ReorderableHeader';
 import { useRowExtras } from '@/lib/useRowExtras';
 import { AddFieldButton, CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
@@ -77,6 +79,7 @@ export default function AllProjectsPage() {
     addField: addCustomField,
     deleteField: deleteCustomField,
     setValue: saveCustomValue,
+    reorderFields: reorderCustomFields,
   } = useCustomFields(ALL_PROJECTS_PAGE_KEY, activeSheet);
 
   // Per-row ad-hoc fields for the active sheet.
@@ -182,6 +185,12 @@ export default function AllProjectsPage() {
   const sheet: AllProjectsSheet | undefined = useMemo(
     () => data?.sheets.find(s => s.name === activeSheet),
     [data, activeSheet]
+  );
+
+  // Column order for the sheet's own (synced) columns; see useHeaderOrder.
+  const EMPTY: string[] = useMemo(() => [], []);
+  const { headers, reorderHeaders, orderError } = useHeaderOrder(
+    ALL_PROJECTS_PAGE_KEY, activeSheet, sheet?.headers ?? EMPTY
   );
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
@@ -296,17 +305,18 @@ export default function AllProjectsPage() {
       for (const e of extrasByRow.get(r.uid) || []) merged[e.label] = e.value;
       return merged;
     });
-    const headers = [...sheet.headers, ...customFields.map(f => f.label), ...extraLabels];
+    // Built from the reordered `headers` so an export matches the screen.
+    const exportHeaders = [...headers, ...customFields.map(f => f.label), ...extraLabels];
     const baseName = `all-projects-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const lines = [headers.map(esc).join(',')];
-      rows.forEach(r => lines.push(headers.map(h => esc(r[h])).join(',')));
+      const lines = [exportHeaders.map(esc).join(',')];
+      rows.forEach(r => lines.push(exportHeaders.map(h => esc(r[h])).join(',')));
       download(`${baseName}.csv`, lines.join('\n'), 'text/csv');
       return;
     }
-    const aoa: (string | number | boolean)[][] = [headers.slice()];
-    rows.forEach(r => aoa.push(headers.map(h => (r[h] == null ? '' : String(r[h])))));
+    const aoa: (string | number | boolean)[][] = [exportHeaders.slice()];
+    rows.forEach(r => aoa.push(exportHeaders.map(h => (r[h] == null ? '' : String(r[h])))));
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
@@ -367,10 +377,10 @@ export default function AllProjectsPage() {
         </div>
       </div>
 
-      {(error || customError || extrasError) && (
+      {(error || customError || extrasError || orderError) && (
         <div className="rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 to-rose-50/50 px-4 py-3 text-[12px] text-rose-700 flex items-start gap-2 shadow-sm">
           <span className="mt-0.5">⚠️</span>
-          <span>{error || customError || extrasError}</span>
+          <span>{error || customError || extrasError || orderError}</span>
         </div>
       )}
 
@@ -464,15 +474,26 @@ export default function AllProjectsPage() {
                   <table className="min-w-full text-[12.5px]">
                     <thead className="bg-slate-50/80 backdrop-blur text-slate-600 sticky top-0 z-10">
                       <tr>
-                        {sheet.headers.map(h => (
-                          <th key={h} className="text-left text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200">
+                        {headers.map((h, i) => (
+                          <ReorderableHeader
+                            key={h}
+                            index={i}
+                            count={headers.length}
+                            group="sheet-header"
+                            label={h}
+                            onMove={reorderHeaders}
+                            className="text-[10.5px] uppercase tracking-wider py-2.5"
+                          >
                             {h}
-                          </th>
+                          </ReorderableHeader>
                         ))}
-                        {customFields.map(f => (
+                        {customFields.map((f, i) => (
                           <CustomFieldHeader
                             key={`cf-${f.id}`}
                             field={f}
+                            index={i}
+                            count={customFields.length}
+                            onMove={reorderCustomFields}
                             onDelete={deleteCustomField}
                             className="text-[10.5px] uppercase tracking-wider py-2.5"
                           />
@@ -493,7 +514,7 @@ export default function AllProjectsPage() {
                         const isEditing = editingUid === row.uid;
                         return (
                           <tr key={row.uid} className="hover:bg-brand-50/30 transition-colors">
-                            {sheet.headers.map(h => {
+                            {headers.map(h => {
                               const v = row.cells[h];
                               return (
                                 <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-slate-700">
@@ -552,7 +573,7 @@ export default function AllProjectsPage() {
                       })}
                       {addingRow && (
                         <AddRowFormRow
-                          headers={sheet.headers}
+                          headers={headers}
                           trailingCols={customFields.length + 1}
                           busy={rowBusy}
                           onSave={addRow}
@@ -562,7 +583,7 @@ export default function AllProjectsPage() {
                       )}
                       {filteredRows.length === 0 && !addingRow && (
                         <tr>
-                          <td colSpan={(sheet.headers.length || 1) + customFields.length + 2} className="px-3 py-10 text-center text-slate-500 italic">
+                          <td colSpan={(headers.length || 1) + customFields.length + 2} className="px-3 py-10 text-center text-slate-500 italic">
                             {sheet.rows.length === 0 ? 'No rows yet. Use Add Row to create one.' : 'No matching rows.'}
                           </td>
                         </tr>
