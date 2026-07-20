@@ -7,7 +7,7 @@ function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get('next') || '/settings';
+  const next = params.get('next') || '/';
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +22,7 @@ function LoginForm() {
     const res = await login(username, password);
     if (res.ok) {
       // Only ever return to an in-app path, never an attacker-supplied origin.
-      router.push(next.startsWith('/') ? next : '/settings');
+      router.push(next.startsWith('/') ? next : '/');
       router.refresh();
     } else {
       setError(res.error || 'Login failed');
