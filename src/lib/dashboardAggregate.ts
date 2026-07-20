@@ -90,9 +90,9 @@ export function aggregateColumn(summaries: PageSummary[], candidates: string[]):
     if (!sum.data) continue;
     for (const sheet of sum.data.sheets) {
       if (!sheet.rows.length) continue;
-      const key = findKey(sheet.rows[0], candidates);
+      const key = findKey(sheet.rows[0].cells, candidates);
       if (!key) continue;
-      for (const row of sheet.rows) bumpCount(map, row[key]);
+      for (const row of sheet.rows) bumpCount(map, row.cells[key]);
     }
   }
   return map;

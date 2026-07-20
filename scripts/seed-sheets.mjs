@@ -6,13 +6,21 @@
 //
 // Reads DB credentials + optional *_SHEET_ID overrides from .env.local, fetches
 // each workbook as xlsx, parses it exactly like the /api/sheet-sync route, and
-// replaces that page's rows in the sheet_tabs / sheet_rows tables.
+// reconciles that page's rows in the sheet_tabs / sheet_rows tables.
+//
+// This is a RECONCILING sync, not a replace: rows are matched to what is already
+// stored by natural key so their row_uid survives, and user-added rows
+// (origin='user') are never deleted. The storage logic lives in
+// scripts/lib/sheetStore.mjs, shared with the app — do not re-implement it here.
+//
+// Run `npm run migrate` before the first seed after upgrading.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import mysql from 'mysql2/promise';
 import * as XLSX from 'xlsx';
+import { ensureTables, syncPageData, sweepOrphanExtras } from './lib/sheetStore.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -78,63 +86,23 @@ async function fetchWorkbook(sheetId) {
   });
 }
 
-// --- storage (mirror of src/lib/sheetData.ts, plain SQL) ------------------
-async function ensureTables(conn) {
-  await conn.query(`
-    CREATE TABLE IF NOT EXISTS sheet_tabs (
-      id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
-      page_key    VARCHAR(64)  NOT NULL,
-      sheet_name  VARCHAR(255) NOT NULL,
-      position    INT          NOT NULL DEFAULT 0,
-      headers     JSON         NOT NULL,
-      synced_at   BIGINT       NOT NULL DEFAULT 0,
-      updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (id),
-      UNIQUE KEY uq_page_sheet (page_key, sheet_name)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-  await conn.query(`
-    CREATE TABLE IF NOT EXISTS sheet_rows (
-      tab_id     INT UNSIGNED NOT NULL,
-      row_index  INT          NOT NULL,
-      cells      JSON         NOT NULL,
-      PRIMARY KEY (tab_id, row_index),
-      CONSTRAINT fk_sheet_rows_tab FOREIGN KEY (tab_id)
-        REFERENCES sheet_tabs (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
-}
+// Storage lives in scripts/lib/sheetStore.mjs, shared with src/lib/sheetData.ts.
 
-async function replacePageData(conn, pageKey, sheets, syncedAt) {
-  await conn.beginTransaction();
-  try {
-    await conn.execute('DELETE FROM sheet_tabs WHERE page_key = ?', [pageKey]);
-    let totalRows = 0;
-    for (let pos = 0; pos < sheets.length; pos++) {
-      const sheet = sheets[pos];
-      const [res] = await conn.execute(
-        'INSERT INTO sheet_tabs (page_key, sheet_name, position, headers, synced_at) VALUES (?, ?, ?, ?, ?)',
-        [pageKey, sheet.name, pos, JSON.stringify(sheet.headers), syncedAt]
-      );
-      const tabId = res.insertId;
-      const BATCH = 200;
-      for (let i = 0; i < sheet.rows.length; i += BATCH) {
-        const slice = sheet.rows.slice(i, i + BATCH);
-        const placeholders = slice.map(() => '(?, ?, ?)').join(', ');
-        const params = [];
-        slice.forEach((row, j) => { params.push(tabId, i + j, JSON.stringify(row)); });
-        await conn.execute(
-          `INSERT INTO sheet_rows (tab_id, row_index, cells) VALUES ${placeholders}`,
-          params
-        );
-      }
-      totalRows += sheet.rows.length;
-    }
-    await conn.commit();
-    return totalRows;
-  } catch (e) {
-    await conn.rollback();
-    throw e;
+/**
+ * Refuse to run against a pre-migration database. Without row_uid the sync
+ * cannot match incoming rows to stored ones, so every row would get a fresh
+ * identity and every row_extra / custom field value would orphan.
+ */
+async function assertMigrated(conn) {
+  const [rows] = await conn.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sheet_rows'
+        AND COLUMN_NAME = 'row_uid' LIMIT 1`
+  );
+  if (!rows.length) {
+    console.error('This database predates stable row identity.');
+    console.error('Run `npm run migrate` first, then seed again.');
+    process.exit(1);
   }
 }
 
@@ -165,18 +133,43 @@ async function main() {
   });
 
   console.log(`Seeding into ${DB_USER}@${DB_HOST}:${DB_PORT || 3306}/${DB_NAME}`);
+  await assertMigrated(conn);
   await ensureTables(conn);
 
   const syncedAt = Date.now();
   let ok = 0, failed = 0;
+  let churnWarnings = 0;
   for (const pageKey of pages) {
     const sheetId = PAGE_SHEET_IDS[pageKey];
     process.stdout.write(`• ${pageKey} … `);
     try {
       const sheets = await fetchWorkbook(sheetId);
-      const rowCount = await replacePageData(conn, pageKey, sheets, syncedAt);
-      const tabInfo = sheets.map(s => `${s.name}:${s.rows.length}`).join(', ');
-      console.log(`OK — ${sheets.length} tab(s), ${rowCount} rows [${tabInfo}]`);
+      const r = await syncPageData(conn, pageKey, sheets, syncedAt);
+      const swept = await sweepOrphanExtras(conn, pageKey);
+      console.log(
+        `OK — ${r.tabs} tab(s), ${r.rows} rows ` +
+        `(${r.matched} matched, ${r.added} new, ${r.removed} removed` +
+        `${r.userRows ? `, ${r.userRows} user row(s) kept` : ''}` +
+        `${swept ? `, ${swept} orphan extra(s) swept` : ''})`
+      );
+      // If almost nothing matched on a page that already had rows, natural-key
+      // matching has fallen over and user data is orphaning silently.
+      if (r.matched > 0 || r.added > 0) {
+        const newRatio = r.added / Math.max(1, r.matched + r.added);
+        if (r.matched === 0 && r.added > 5) {
+          console.log(`  ! every row read as new — row_uids were reassigned`);
+          churnWarnings++;
+        } else if (newRatio > 0.5 && r.matched > 0) {
+          console.log(`  ! ${Math.round(newRatio * 100)}% of rows read as new — check upstream edits`);
+          churnWarnings++;
+        }
+      }
+      if (r.byContentHash > 0) {
+        console.log(
+          `  ${r.byIdentityKey} row(s) keyed by an identity column, ` +
+          `${r.byContentHash} by content hash (churn if any cell changes)`
+        );
+      }
       ok++;
     } catch (e) {
       console.log(`FAILED — ${e.message}`);
@@ -186,6 +179,12 @@ async function main() {
 
   await conn.end();
   console.log(`\nDone. ${ok} page(s) seeded${failed ? `, ${failed} failed` : ''}.`);
+  if (churnWarnings) {
+    console.log(
+      `${churnWarnings} page(s) showed high identity churn. Adding a stable ID ` +
+      `column to those sheets would let row data survive upstream edits.`
+    );
+  }
   process.exit(failed ? 1 : 0);
 }
 

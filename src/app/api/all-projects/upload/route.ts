@@ -1,17 +1,22 @@
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import type { AllProjectsData, AllProjectsSheet, SheetRow } from '@/lib/allProjectsTypes';
+import type { AllProjectsData, AllProjectsSheet } from '@/lib/allProjectsTypes';
 
 export const dynamic = 'force-dynamic';
 
+// This route only parses an uploaded file and hands it back — it never writes to
+// the database, so these rows have no stored identity. Uids are synthesized so
+// the payload still matches the shape the table expects; they last as long as
+// the client keeps the parsed result and cannot be used to address stored rows.
 function rowsToSheet(name: string, matrix: string[][]): AllProjectsSheet {
   if (!matrix.length) return { name, headers: [], rows: [] };
   const headers = matrix[0].map((h, i) => (h || '').toString().trim() || `Column ${i + 1}`);
-  const rows: SheetRow[] = matrix.slice(1)
+  const rows = matrix.slice(1)
     .filter(r => r.some(v => v != null && String(v).trim().length))
     .map(r => {
-      const obj: SheetRow = {};
-      headers.forEach((h, i) => { obj[h] = (r[i] ?? '').toString(); });
-      return obj;
+      const cells: Record<string, string> = {};
+      headers.forEach((h, i) => { cells[h] = (r[i] ?? '').toString(); });
+      return { uid: randomUUID(), origin: 'sheet' as const, cells };
     });
   return { name, headers, rows };
 }

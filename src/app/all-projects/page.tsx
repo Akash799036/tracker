@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { ALL_PROJECTS_STORAGE_KEY, type AllProjectsData, type AllProjectsSheet } from '@/lib/allProjectsTypes';
+import { ALL_PROJECTS_PAGE_KEY, ALL_PROJECTS_STORAGE_KEY, type AllProjectsData, type AllProjectsSheet } from '@/lib/allProjectsTypes';
 import { download } from '@/lib/ui';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
@@ -78,7 +78,7 @@ export default function AllProjectsPage() {
     addField: addCustomField,
     deleteField: deleteCustomField,
     setValue: saveCustomValue,
-  } = useCustomFields('all-projects', activeSheet);
+  } = useCustomFields(ALL_PROJECTS_PAGE_KEY, activeSheet);
 
   const scrollBy = (dx: number) => scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
 

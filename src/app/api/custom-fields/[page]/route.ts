@@ -51,20 +51,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ page: s
   }
 }
 
-// PATCH /api/custom-fields/:page  { fieldId, rowKey, value }
+// PATCH /api/custom-fields/:page  { fieldId, rowUid, value }
 export async function PATCH(req: Request, { params }: { params: Promise<{ page: string }> }) {
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
     const body = await req.json().catch(() => ({}));
     const fieldId = Number(body?.fieldId);
-    const rowKey = Number(body?.rowKey);
+    const rowUid = String(body?.rowUid ?? '').trim();
     const value = String(body?.value ?? '');
-    if (!Number.isInteger(fieldId) || !Number.isInteger(rowKey)) {
-      return NextResponse.json({ error: 'fieldId and rowKey must be integers' }, { status: 400 });
+    if (!Number.isInteger(fieldId)) {
+      return NextResponse.json({ error: 'fieldId must be an integer' }, { status: 400 });
     }
-    const ok = await setValue(pageKey, fieldId, rowKey, value);
-    if (!ok) return NextResponse.json({ error: 'field not found for this page' }, { status: 404 });
+    if (!rowUid) {
+      return NextResponse.json({ error: 'rowUid is required' }, { status: 400 });
+    }
+    const ok = await setValue(pageKey, fieldId, rowUid, value);
+    if (!ok) {
+      return NextResponse.json({ error: 'field or row not found for this page' }, { status: 404 });
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     return fail(e);
