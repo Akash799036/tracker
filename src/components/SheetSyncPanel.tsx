@@ -13,6 +13,7 @@ import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/shee
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
+import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from './ReorderableHeader';
 import { CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from './AddRowForm';
@@ -69,11 +70,8 @@ export default function SheetSyncPanel({
   } = useCustomFields(pageKey, activeSheet);
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const scrollBy = (dx: number) => {
-    scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
-  };
+  // Also makes a plain mouse wheel scroll the sheet sideways.
+  const { ref: scrollRef, scrollBy } = useHorizontalScroll<HTMLDivElement>();
 
   /** Pull the authoritative rows from the API. */
   const refresh = useCallback(async () => {
@@ -304,7 +302,12 @@ export default function SheetSyncPanel({
 
           {sheet && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
+              {/* Search + scroll arrows stay reachable while the sheet scrolls.
+                  top-16 clears the h-16 Topbar; z-10 keeps it under that bar's
+                  z-20. The negative margins + padding let the opaque background
+                  span the panel's p-4 gutter, so rows can't show through at the
+                  edges as they pass beneath. */}
+              <div className="sticky top-16 z-10 -mx-4 bg-white px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
                 <input
                   value={query}
                   onChange={e => setQuery(e.target.value)}

@@ -437,6 +437,13 @@ export type PMProject = {
   cells: SheetRow;
   /** Column order as the sheet defines it, so details read like the table. */
   headers: string[];
+  /**
+   * Every tab this project was found on, deduped and in sighting order. One
+   * project is commonly tracked on several tabs at once (a category tab plus
+   * 'Live Projects' plus a maintenance tab); the modal shows one card and lists
+   * these as its origins. Always contains at least the card's own category.
+   */
+  sources: { category: string; href: string; sourceLabel: string }[];
 };
 
 export type PMProjects = {
@@ -449,14 +456,92 @@ export type PMProjects = {
 const NAME_KEYS = ['project name', 'project', 'name', 'client name', 'client', 'domain name', 'domain', 'website'];
 
 /**
+ * Identity of a project *as a user thinks of it*: its name. One project is
+ * routinely tracked on several tabs at once — 'AC Nola' sits on
+ * dashboard/Wordpress, projects/Live Projects and a maintenance tab — and each
+ * copy carries different columns, so the rows are not byte-identical and no
+ * uid or whole-row hash will fold them together. Keying on the title (within a
+ * single PM) is what stops the modal listing the same project three times.
+ *
+ * Returns null for rows with no usable title; those are kept unmerged, since
+ * collapsing every untitled row into one would hide real projects.
+ */
+function projectIdentity(title: string): string | null {
+  const key = title.trim().toLowerCase().replace(/\s+/g, ' ');
+  return key && key !== 'untitled project' ? key : null;
+}
+
+/**
+ * How much real content a row carries, used to decide which copy of a project
+ * to keep. The tab with the most filled-in columns is the most informative one
+ * to show, so the merged card is never worse than any copy it replaced.
+ */
+function rowWeight(cells: SheetRow): number {
+  return Object.values(cells).filter(v => v != null && String(v).trim() !== '').length;
+}
+
+/**
+ * Collapse rows that describe the same project onto one card, keeping the
+ * best-populated copy and recording every tab it came from.
+ *
+ * Cells are merged rather than replaced: the copy on 'Live Projects' may hold a
+ * live date the category tab lacks, so filling the winner's blanks from the
+ * others loses no information the user could previously see.
+ */
+function mergeDuplicateProjects(projects: PMProject[]): PMProject[] {
+  const byIdentity = new Map<string, PMProject>();
+  const unmergeable: PMProject[] = [];
+
+  for (const p of projects) {
+    const id = projectIdentity(p.title);
+    if (!id) { unmergeable.push(p); continue; }
+
+    const kept = byIdentity.get(id);
+    if (!kept) { byIdentity.set(id, p); continue; }
+
+    // Keep whichever row carries more filled-in columns as the card's basis.
+    const [winner, loser] = rowWeight(p.cells) > rowWeight(kept.cells) ? [p, kept] : [kept, p];
+    const merged: PMProject = {
+      ...winner,
+      // Fill only the winner's empty columns — never overwrite a real value.
+      cells: { ...loser.cells, ...pruneEmpty(winner.cells) },
+      headers: winner.headers.length >= loser.headers.length ? winner.headers : loser.headers,
+      sources: dedupeSources([...kept.sources, ...p.sources]),
+    };
+    byIdentity.set(id, merged);
+  }
+
+  return [...byIdentity.values(), ...unmergeable];
+}
+
+/** Drop blank cells so a spread of this can't blank out a populated column. */
+function pruneEmpty(cells: SheetRow): SheetRow {
+  const out: SheetRow = {};
+  for (const [k, v] of Object.entries(cells)) {
+    if (v != null && String(v).trim() !== '') out[k] = v;
+  }
+  return out;
+}
+
+function dedupeSources(sources: PMProject['sources']): PMProject['sources'] {
+  const seen = new Set<string>();
+  return sources.filter(s => {
+    const k = `${s.href}|${s.category.trim().toLowerCase()}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
  * Collect the actual project rows for every PM — the leaderboard keeps only
  * counts, but the drill-down modal needs the rows themselves.
  *
  * Mirrors `aggregateByCategory`'s filtering (same PM column lookup, same
  * non-project tabs skipped, same hidden-row skip) and re-uses one global
- * canonical map, so `total` here always equals the leaderboard's total. If you
- * change the filtering in either place, change it in both or the modal will
- * disagree with the number the user clicked on.
+ * canonical map. Note `total` counts distinct projects after the cross-tab
+ * merge below, so it can be lower than the leaderboard's raw row count — the
+ * modal deliberately reports projects, not spreadsheet rows.
  */
 export function collectProjectsByPM(summaries: PageSummary[]): Map<string, PMProjects> {
   // Pass 1: gather rows keyed by their raw (normalised-but-not-canonical) name.
@@ -496,6 +581,7 @@ export function collectProjectsByPM(summaries: PageSummary[]): Map<string, PMPro
           title: rawTitle || 'Untitled project',
           cells: row.cells,
           headers: sheet.headers,
+          sources: [{ category, href: sum.source.href, sourceLabel: sum.source.label }],
         };
         if (list) list.push(project); else byRawName.set(pm, [project]);
       }
@@ -514,9 +600,13 @@ export function collectProjectsByPM(summaries: PageSummary[]): Map<string, PMPro
     if (entry) entry.projects.push(...projects);
     else out.set(name, { name, total: 0, projects: [...projects] });
   }
+  // Pass 3: fold the same project appearing on several tabs into one card.
+  // Runs after the canonical fold so a PM's spelling variants are already one
+  // bucket — otherwise 'Sibam' and 'Sibam Sinha' would each keep their own copy.
   for (const entry of out.values()) {
+    entry.projects = mergeDuplicateProjects(entry.projects);
     entry.projects.sort(
-      (a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title)
+      (a, b) => a.title.localeCompare(b.title) || a.category.localeCompare(b.category)
     );
     entry.total = entry.projects.length;
   }
