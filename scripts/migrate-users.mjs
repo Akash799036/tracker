@@ -48,9 +48,10 @@ async function main() {
   if (!DB_HOST || !DB_USER || !DB_NAME) {
     throw new Error('Missing DB_HOST / DB_USER / DB_NAME. Check .env.local');
   }
-  if (!AUTH_USERNAME || !AUTH_PASSWORD) {
-    throw new Error('Missing AUTH_USERNAME / AUTH_PASSWORD in .env.local — nothing to seed');
-  }
+  // Seeding is optional. Once the admin exists, AUTH_USERNAME/AUTH_PASSWORD are
+  // removed from .env.local, so this script's job narrows to ensuring the table
+  // exists — accounts are managed with `npm run user` from then on.
+  const canSeed = Boolean(AUTH_USERNAME && AUTH_PASSWORD);
 
   const conn = await mysql.createConnection({
     host: DB_HOST,
@@ -65,26 +66,36 @@ async function main() {
     await conn.query(SCHEMA);
     console.log('✓ users table ready');
 
-    const [rows] = await conn.execute(
-      'SELECT id FROM users WHERE username = ? LIMIT 1',
-      [AUTH_USERNAME]
-    );
-
-    if (rows.length === 0) {
-      await conn.execute(
-        'INSERT INTO users (username, password_hash) VALUES (?, ?)',
-        [AUTH_USERNAME, await hashPassword(AUTH_PASSWORD)]
+    if (!canSeed) {
+      const [existing] = await conn.query('SELECT COUNT(*) AS n FROM users');
+      console.log(
+        existing[0].n > 0
+          ? '• no AUTH_USERNAME/AUTH_PASSWORD in .env.local — nothing to seed (accounts already exist)'
+          : '! table is empty and there are no seed credentials.\n' +
+            '  Create the first account with:  npm run user -- add <username> <password>'
       );
-      console.log(`✓ seeded admin user "${AUTH_USERNAME}" from .env.local`);
-    } else if (forcePassword) {
-      await conn.execute(
-        'UPDATE users SET password_hash = ?, is_active = 1 WHERE username = ?',
-        [await hashPassword(AUTH_PASSWORD), AUTH_USERNAME]
-      );
-      console.log(`✓ reset password for "${AUTH_USERNAME}" from .env.local`);
     } else {
-      console.log(`• user "${AUTH_USERNAME}" already exists — left unchanged`);
-      console.log('  (re-run with --force-password to reset it from .env.local)');
+      const [rows] = await conn.execute(
+        'SELECT id FROM users WHERE username = ? LIMIT 1',
+        [AUTH_USERNAME]
+      );
+
+      if (rows.length === 0) {
+        await conn.execute(
+          'INSERT INTO users (username, password_hash) VALUES (?, ?)',
+          [AUTH_USERNAME, await hashPassword(AUTH_PASSWORD)]
+        );
+        console.log(`✓ seeded admin user "${AUTH_USERNAME}" from .env.local`);
+      } else if (forcePassword) {
+        await conn.execute(
+          'UPDATE users SET password_hash = ?, is_active = 1 WHERE username = ?',
+          [await hashPassword(AUTH_PASSWORD), AUTH_USERNAME]
+        );
+        console.log(`✓ reset password for "${AUTH_USERNAME}" from .env.local`);
+      } else {
+        console.log(`• user "${AUTH_USERNAME}" already exists — left unchanged`);
+        console.log('  (re-run with --force-password to reset it from .env.local)');
+      }
     }
 
     const [all] = await conn.query('SELECT username, is_active FROM users ORDER BY id');
