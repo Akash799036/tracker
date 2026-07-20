@@ -1,11 +1,16 @@
-import { createHmac, timingSafeEqual, randomBytes, scryptSync } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 // Server-only auth helpers for the single admin account.
 //
 // Credentials live in .env.local:
-//   AUTH_USERNAME       — the admin login name
-//   AUTH_PASSWORD_HASH  — scrypt hash, "salt:hash" hex (see scripts/hash-password.mjs)
-//   AUTH_SECRET         — random string used to sign the session cookie
+//   AUTH_USERNAME   — the admin login name
+//   AUTH_PASSWORD   — the admin password, in plain text
+//   AUTH_SECRET     — random string used to sign the session cookie
+//
+// The password is compared directly, with no hashing. This is a deliberate
+// simplification for a single-admin internal tool: it means the value in
+// .env.local is always exactly what you type at the login form, with no
+// generator step to get out of sync. Keep .env.local out of version control.
 //
 // The session cookie is a signed token, not encrypted: it carries the username
 // and an expiry, plus an HMAC so it can't be forged client-side.
@@ -14,7 +19,9 @@ export const SESSION_COOKIE = 'pt-session';
 const SESSION_MAX_AGE = 60 * 60 * 8; // 8 hours
 
 function secret(): string {
-  const s = process.env.AUTH_SECRET;
+  // Fall back to the password so a missing AUTH_SECRET can't 500 the login
+  // route; sessions are still signed, just tied to the current password.
+  const s = process.env.AUTH_SECRET || process.env.AUTH_PASSWORD;
   if (!s) throw new Error('Missing AUTH_SECRET. Set it in .env.local');
   return s;
 }
@@ -31,34 +38,24 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-/** Hash a plaintext password into the "salt:hash" form stored in env. */
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 64).toString('hex');
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(':');
-  if (!salt || !hash) return false;
-  const candidate = scryptSync(password, salt, 64).toString('hex');
-  return safeEqual(candidate, hash);
-}
-
 /**
  * Check submitted credentials against the configured admin account.
- * Always runs the password hash even on an unknown username so the response
- * time doesn't reveal whether the name exists.
+ * Both comparisons always run so the response time doesn't reveal which half
+ * was wrong. Returns false (not a throw) when unconfigured, so a bad .env
+ * surfaces as a normal failed login rather than a 500.
  */
 export function verifyCredentials(username: string, password: string): boolean {
   const user = process.env.AUTH_USERNAME;
-  const stored = process.env.AUTH_PASSWORD_HASH;
-  if (!user || !stored) {
-    throw new Error('Missing AUTH_USERNAME / AUTH_PASSWORD_HASH. Set them in .env.local');
-  }
+  const pass = process.env.AUTH_PASSWORD;
+  if (!user || !pass) return false;
   const userOk = safeEqual(username, user);
-  const passOk = verifyPassword(password, stored);
+  const passOk = safeEqual(password, pass);
   return userOk && passOk;
+}
+
+/** True when the admin account is configured; used for a clearer login error. */
+export function isAuthConfigured(): boolean {
+  return Boolean(process.env.AUTH_USERNAME && process.env.AUTH_PASSWORD);
 }
 
 /** Build a signed session token for the given user. */
