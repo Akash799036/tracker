@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const password = typeof body?.password === 'string' ? body.password : '';
     if (!username || !password) return badRequest('username and password are required');
 
-    if (!verifyCredentials(username, password)) {
+    if (!(await verifyCredentials(username, password))) {
       // Deliberately vague: don't reveal which half was wrong.
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }

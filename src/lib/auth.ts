@@ -1,16 +1,17 @@
 import { createHmac, timingSafeEqual } from 'crypto';
+import { query } from './db';
+import { verifyPassword } from './password';
 
-// Server-only auth helpers for the single admin account.
+// Server-only auth helpers.
 //
-// Credentials live in .env.local:
-//   AUTH_USERNAME   — the admin login name
-//   AUTH_PASSWORD   — the admin password, in plain text
+// Accounts live in the `users` table on the live database (see
+// scripts/migrate-users.mjs), one row per login with a scrypt password hash.
+// Manage them with `npm run migrate:users` and `npm run user`.
+//
+// .env.local still supplies:
 //   AUTH_SECRET     — random string used to sign the session cookie
-//
-// The password is compared directly, with no hashing. This is a deliberate
-// simplification for a single-admin internal tool: it means the value in
-// .env.local is always exactly what you type at the login form, with no
-// generator step to get out of sync. Keep .env.local out of version control.
+//   AUTH_USERNAME / AUTH_PASSWORD — seed values for the migration only; they
+//                     are NOT consulted at login time.
 //
 // The session cookie is a signed token, not encrypted: it carries the username
 // and an expiry, plus an HMAC so it can't be forged client-side.
@@ -19,9 +20,10 @@ export const SESSION_COOKIE = 'pt-session';
 const SESSION_MAX_AGE = 60 * 60 * 8; // 8 hours
 
 function secret(): string {
-  // Fall back to the password so a missing AUTH_SECRET can't 500 the login
-  // route; sessions are still signed, just tied to the current password.
-  const s = process.env.AUTH_SECRET || process.env.AUTH_PASSWORD;
+  // No fallback: passwords now live in the database, so AUTH_SECRET is the only
+  // thing that can sign a session. middleware.ts requires it too — without it
+  // every session would fail to validate at the edge.
+  const s = process.env.AUTH_SECRET;
   if (!s) throw new Error('Missing AUTH_SECRET. Set it in .env.local');
   return s;
 }
@@ -38,24 +40,38 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-/**
- * Check submitted credentials against the configured admin account.
- * Both comparisons always run so the response time doesn't reveal which half
- * was wrong. Returns false (not a throw) when unconfigured, so a bad .env
- * surfaces as a normal failed login rather than a 500.
- */
-export function verifyCredentials(username: string, password: string): boolean {
-  const user = process.env.AUTH_USERNAME;
-  const pass = process.env.AUTH_PASSWORD;
-  if (!user || !pass) return false;
-  const userOk = safeEqual(username, user);
-  const passOk = safeEqual(password, pass);
-  return userOk && passOk;
-}
+type UserRow = { id: number; username: string; password_hash: string };
 
-/** True when the admin account is configured; used for a clearer login error. */
-export function isAuthConfigured(): boolean {
-  return Boolean(process.env.AUTH_USERNAME && process.env.AUTH_PASSWORD);
+// A throwaway hash used to burn roughly the same CPU when the username doesn't
+// exist, so response time doesn't reveal which accounts are real.
+const DUMMY_HASH =
+  'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$' +
+  'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+
+/**
+ * Check submitted credentials against the `users` table on the live database.
+ *
+ * A hash comparison always runs — even for an unknown username — so the
+ * response time doesn't reveal which accounts exist. Database errors propagate
+ * to the caller, which turns them into a 500 rather than a silent "wrong
+ * password" that would be very confusing to debug.
+ */
+export async function verifyCredentials(username: string, password: string): Promise<boolean> {
+  const rows = await query<UserRow[]>(
+    'SELECT id, username, password_hash FROM users WHERE username = ? AND is_active = 1 LIMIT 1',
+    [username]
+  );
+  const user = rows[0];
+  const ok = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
+  if (!user || !ok) return false;
+
+  // Best-effort bookkeeping; a failure here must not block a valid login.
+  try {
+    await query('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+  } catch {
+    /* ignore */
+  }
+  return true;
 }
 
 /** Build a signed session token for the given user. */
