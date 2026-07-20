@@ -20,7 +20,14 @@ import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const KEYS = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+// AUTH_SECRET signs the session cookie and is read by both the login route and
+// the edge middleware. Without it the login route 500s and every session fails
+// to validate, so it must ship alongside the DB credentials.
+//
+// AUTH_USERNAME / AUTH_PASSWORD are deliberately NOT pushed: logins are checked
+// against the `users` table on the database, and those two are only seed values
+// for `npm run migrate:users`, which is run locally against the live DB.
+const KEYS = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'AUTH_SECRET'];
 
 // Which Vercel environments to target. Default: production only.
 const arg = (process.argv[2] || 'production').toLowerCase();
