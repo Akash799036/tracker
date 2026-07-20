@@ -57,13 +57,13 @@ ones and would give every row a fresh identity — orphaning per-row data.
 
 ### Row identity
 
-Each row has a `row_uid` that survives a re-sync; per-row fields and custom
-field values point at it. The seeder matches incoming rows to stored ones by
-natural key (`scripts/lib/rowIdentity.mjs`), preferring a discovered identity
-column (`Project Name`, `Url`, …) and otherwise hashing the row's contents.
+Each row has a `row_uid` that survives a re-sync; custom field values point at
+it. The seeder matches incoming rows to stored ones by natural key
+(`scripts/lib/rowIdentity.mjs`), preferring a discovered identity column
+(`Project Name`, `Url`, …) and otherwise hashing the row's contents.
 
-A content-hashed row loses its identity if any cell changes upstream: its
-extras orphan and it reads as a new row. Rows keyed off an identity column do
+A content-hashed row loses its identity if any cell changes upstream: its field
+values orphan and it reads as a new row. Rows keyed off an identity column do
 not have that problem. The seeder prints the split on every run:
 
 ```
@@ -81,10 +81,9 @@ or name column.
 - **Edit** on a synced row writes `cells_override`, which the sync preserves
   and reads merge over the synced values, so an edit is not lost at the next
   sync. Editing a value back to its original clears the override.
-- **Delete** removes a user row outright (with its extras). A synced row is
-  only hidden — deleting it would just bring it back at the next sync.
-- **Row fields** (the amber column) are ad-hoc key/value pairs on a single
-  row. Distinct from **Add Field**, which adds a column to the whole sheet.
+- **Delete** removes a user row outright (with its field values). A synced row
+  is only hidden — deleting it would just bring it back at the next sync.
+- **Add Field** adds a custom column to the whole sheet.
 
 All of these write to the database, so they are shared: an edit one person
 makes is an edit everyone sees.
@@ -96,11 +95,12 @@ makes is an edit everyone sees.
 | `sheet_tabs` | one row per (page, sheet tab): headers, position, synced-at |
 | `sheet_rows` | the data; `row_uid` identity, `cells`, `cells_override`, `origin`, `hidden` |
 | `custom_fields` / `custom_field_values` | sheet-wide extra columns, values keyed by `row_uid` |
-| `row_extras` | per-row ad-hoc fields, keyed by `row_uid` |
+| `row_extras` | retired — held the old per-row ad-hoc fields, keyed by `row_uid` |
 
-`row_extras` has no foreign key to `sheet_rows` on purpose: the sync replaces
-seeded rows, and a cascading delete would wipe extras mid-sync. The seeder
-sweeps orphans after each page instead.
+The per-row "Row fields" feature was removed. `row_extras` is retained so its
+existing data is not lost, but nothing writes to it: the seeder still sweeps
+orphans, and deleting a user row still clears its leftovers. Drop the table
+once you are sure the data is no longer wanted.
 
 ## Architecture
 

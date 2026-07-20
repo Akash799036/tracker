@@ -65,7 +65,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ page: 
 }
 
 // DELETE /api/sheet-rows/:page?uid=...
-// A user row is removed outright, along with its extras and field values. A
+// A user row is removed outright, along with its field values. A
 // synced row is only hidden — deleting it would bring it back at the next sync.
 export async function DELETE(req: Request, { params }: { params: Promise<{ page: string }> }) {
   const { page: pageKey } = await params;

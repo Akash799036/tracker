@@ -14,10 +14,8 @@ import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
-import { useRowExtras } from '@/lib/useRowExtras';
 import { CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
-import { RowExtrasCell } from '@/components/RowExtrasControls';
 
 // Rows, edits and deletes all live in the database now (see /api/sheet-rows).
 // There is no local override layer: an edit one person makes is an edit everyone
@@ -79,19 +77,6 @@ export default function AllProjectsPage() {
     setValue: saveCustomValue,
     reorderFields: reorderCustomFields,
   } = useCustomFields(ALL_PROJECTS_PAGE_KEY, activeSheet);
-
-  // Per-row ad-hoc fields for the active sheet.
-  const {
-    byRow: extrasByRow,
-    allLabels: extraLabels,
-    busy: extrasBusy,
-    error: extrasError,
-    addExtra,
-    setExtraValue,
-    renameExtra,
-    deleteExtra,
-    forgetRow,
-  } = useRowExtras(ALL_PROJECTS_PAGE_KEY, activeSheet);
 
   const scrollBy = (dx: number) => scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
 
@@ -193,21 +178,17 @@ export default function AllProjectsPage() {
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
 
-  // Search spans the sheet's own cells, the custom-field columns and the per-row
-  // extras, so a row is findable by anything visible on it.
+  // Search spans the sheet's own cells and the custom-field columns, so a row is
+  // findable by anything visible on it.
   const filteredRows = useMemo(() => {
     const rows = sheet?.rows ?? [];
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(r => {
       if (Object.values(r.cells).some(v => toStr(v).toLowerCase().includes(q))) return true;
-      if (customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q))) return true;
-      const extras = extrasByRow.get(r.uid) || [];
-      return extras.some(e =>
-        e.label.toLowerCase().includes(q) || e.value.toLowerCase().includes(q)
-      );
+      return customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q));
     });
-  }, [sheet, query, customFields, customValues, extrasByRow]);
+  }, [sheet, query, customFields, customValues]);
 
   const beginEdit = (row: SheetRowRecord) => {
     setEditingUid(row.uid);
@@ -286,7 +267,6 @@ export default function AllProjectsPage() {
         const json = await res.json().catch(() => ({}));
         throw new Error(json?.error || 'could not delete that row');
       }
-      forgetRow(row.uid);
       await refresh();
       if (editingUid === row.uid) cancelEdit();
     } catch (e: any) {
@@ -296,15 +276,14 @@ export default function AllProjectsPage() {
 
   const exportData = (format: 'xlsx' | 'csv') => {
     if (!sheet) return;
-    // Merge custom-field columns and every extras label into the exported view.
+    // Merge the custom-field columns into the exported view.
     const rows = filteredRows.map(r => {
       const merged: Record<string, unknown> = { ...r.cells };
       for (const f of customFields) merged[f.label] = customValues[vkey(f.id, r.uid)] ?? '';
-      for (const e of extrasByRow.get(r.uid) || []) merged[e.label] = e.value;
       return merged;
     });
     // Built from the reordered `headers` so an export matches the screen.
-    const exportHeaders = [...headers, ...customFields.map(f => f.label), ...extraLabels];
+    const exportHeaders = [...headers, ...customFields.map(f => f.label)];
     const baseName = `all-projects-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -375,10 +354,10 @@ export default function AllProjectsPage() {
         </div>
       </div>
 
-      {(error || customError || extrasError || orderError) && (
+      {(error || customError || orderError) && (
         <div className="rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 to-rose-50/50 px-4 py-3 text-[12px] text-rose-700 flex items-start gap-2 shadow-sm">
           <span className="mt-0.5">⚠️</span>
-          <span>{error || customError || extrasError || orderError}</span>
+          <span>{error || customError || orderError}</span>
         </div>
       )}
 
@@ -495,12 +474,6 @@ export default function AllProjectsPage() {
                             className="text-[10.5px] uppercase tracking-wider py-2.5"
                           />
                         ))}
-                        {/* Pinned beside Actions: on a wide sheet these columns
-                            would otherwise sit past the right edge, leaving the
-                            per-row fields invisible until someone scrolls. */}
-                        <th className="text-left text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200 bg-amber-50 sticky right-[6.5rem]">
-                          Row fields
-                        </th>
                         <th className="text-right text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
                           Actions
                         </th>
@@ -534,16 +507,6 @@ export default function AllProjectsPage() {
                                 onSave={val => saveCustomValue(f.id, row.uid, val)}
                               />
                             ))}
-                            <RowExtrasCell
-                              rowUid={row.uid}
-                              extras={extrasByRow.get(row.uid) || []}
-                              onAdd={addExtra}
-                              onSetValue={setExtraValue}
-                              onRename={renameExtra}
-                              onDelete={deleteExtra}
-                              busy={extrasBusy}
-                              className="sticky right-[6.5rem] bg-amber-50/70"
-                            />
                             <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
                               {isEditing ? (
                                 <>
@@ -571,7 +534,7 @@ export default function AllProjectsPage() {
                       {addingRow && (
                         <AddRowFormRow
                           headers={headers}
-                          trailingCols={customFields.length + 1}
+                          trailingCols={customFields.length}
                           busy={rowBusy}
                           onSave={addRow}
                           onCancel={() => setAddingRow(false)}
@@ -580,7 +543,7 @@ export default function AllProjectsPage() {
                       )}
                       {filteredRows.length === 0 && !addingRow && (
                         <tr>
-                          <td colSpan={(headers.length || 1) + customFields.length + 2} className="px-3 py-10 text-center text-slate-500 italic">
+                          <td colSpan={(headers.length || 1) + customFields.length + 1} className="px-3 py-10 text-center text-slate-500 italic">
                             {sheet.rows.length === 0 ? 'No rows yet. Use Add Row to create one.' : 'No matching rows.'}
                           </td>
                         </tr>
