@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { PAGE_SHEET_IDS, isValidPageKey, type AllProjectsData } from '@/lib/sheetSync';
 import type { RawSheet } from '@/lib/allProjectsTypes';
 import { getPageData, replacePageData } from '@/lib/sheetData';
+import { isAuthenticated } from '@/lib/apiAuth';
+import { redactSensitiveCells } from '@/lib/sensitiveCells';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -48,6 +50,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
   const url = new URL(req.url);
   const refresh = url.searchParams.get('refresh') === '1' || url.searchParams.get('source') === 'google';
 
+  // This page is public, so an anonymous caller gets every row but with the
+  // credential columns blanked. Both return paths below must go through
+  // `serve` — the refresh branch returns rows too, and skipping it there would
+  // leak the whole workbook to anyone who appends ?refresh=1.
+  const authed = await isAuthenticated();
+  const serve = (data: AllProjectsData) =>
+    NextResponse.json(authed ? data : redactSensitiveCells(data));
+
   try {
     if (refresh) {
       const sheetId = url.searchParams.get('sheetId') || PAGE_SHEET_IDS[pageKey];
@@ -57,13 +67,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       // Read back rather than returning what we just parsed: the stored rows
       // carry their row_uid and any user edits, which the raw workbook does not.
       const data = await getPageData(pageKey);
-      return NextResponse.json(
+      return serve(
         data ?? ({ sheets: [], syncedAt, source: 'google-sheets', sourceName: sheetId } as AllProjectsData)
       );
     }
 
     const stored = await getPageData(pageKey);
-    if (stored) return NextResponse.json(stored);
+    if (stored) return serve(stored);
 
     // Nothing seeded yet for this page — return an empty-but-valid payload so
     // the UI can render its "not synced" state instead of erroring.

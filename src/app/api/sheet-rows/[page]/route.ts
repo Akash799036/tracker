@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireSession } from '@/lib/apiAuth';
 import { isValidPageKey } from '@/lib/sheetSync';
 import { badPage, badRequest, fail, notFound } from '@/lib/apiHelpers';
 import { insertUserRow, updateRowCells, deleteRow, restoreRow } from '@/lib/sheetData';
@@ -24,6 +25,8 @@ function readCells(raw: unknown): Record<string, string> {
 // Adds a user row. The server drops keys that are not headers of that tab and
 // fills in any missing ones, so the row always matches the table's shape.
 export async function POST(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const denied = await requireSession();
+  if (denied) return denied;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
@@ -41,6 +44,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ page: s
 // PATCH /api/sheet-rows/:page  { rowUid, cells }   -> edit a row
 //                              { rowUid, restore } -> un-hide a synced row
 export async function PATCH(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const denied = await requireSession();
+  if (denied) return denied;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
@@ -68,6 +73,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ page: 
 // A user row is removed outright, along with its field values. A
 // synced row is only hidden — deleting it would bring it back at the next sync.
 export async function DELETE(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const denied = await requireSession();
+  if (denied) return denied;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {

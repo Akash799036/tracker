@@ -1,8 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { SESSION_COOKIE, hasValidSession } from '@/lib/authEdge';
 
-// Gate every page and API route that exposes sheet data behind a valid session.
-// Only the login flow and the health check stay public.
+// Gate the Data & Backup page (and the endpoints that mutate data) behind a
+// valid session. Every other page stays public and readable without logging in.
+//
+// Read routes are deliberately NOT gated: the project pages must work logged
+// out. They instead redact credential columns for anonymous callers — see
+// `redactSensitiveCells` in src/lib/sensitiveCells.ts, applied in the
+// sheet-sync and all-projects/sync routes. Without that redaction these routes
+// served 99 cleartext client passwords to anyone with the URL.
 //
 // This file MUST live at `src/proxy.ts`. This project uses a `src/` directory,
 // so Next.js looks for the convention there — a copy at the repository root is
@@ -17,38 +23,19 @@ import { SESSION_COOKIE, hasValidSession } from '@/lib/authEdge';
 // crash. If you rename or move this file, re-run the unauthenticated checks in
 // docs/auth.md.
 
-// Every page that renders sheet data. Gating the APIs alone would leave these
-// pages loading to a silent blank table — the fetch helpers treat a 401 as
-// "keep whatever is on screen" — so redirect to /login instead.
-const PROTECTED_PAGES = [
-  '/settings',
-  '/all-projects',
-  '/projects',
-  '/live-projects',
-  '/priority-list',
-  '/marketing',
-  '/project',
-  '/', // the dashboard aggregates all of the above
-];
+// Data & Backup only. Everything else is public by design.
+const PROTECTED_PAGES = ['/settings'];
 
-// The sheet data carries third-party credentials — the workbook has 'Password',
-// 'Admin' and 'FTP/Cpanel Creds.' columns, stored verbatim in sheet_rows.cells.
-// These routes were public, so `GET /api/sheet-sync/dashboard` with no cookie
-// returned 99 of them in cleartext JSON. They are gated now.
+// Endpoints that WRITE. Reads stay open so the public pages work logged out,
+// but an anonymous caller must not be able to mutate or exfiltrate wholesale:
+// /api/sheet-rows, /api/custom-fields and /api/header-order all accept
+// POST/PATCH/DELETE, so leaving them open allowed anonymous edits.
 //
-// /api/sheet-rows and /api/custom-fields also accept POST/PATCH/DELETE, so
-// leaving them open allowed anonymous writes as well as anonymous reads.
-//
-// /api/auth/* and /api/db-health stay public on purpose: gating the login route
-// would make signing in impossible.
-const PROTECTED_API = [
-  '/api/all-projects/upload',
-  '/api/all-projects/sync',
-  '/api/sheet-sync',
-  '/api/sheet-rows',
-  '/api/custom-fields',
-  '/api/header-order',
-];
+// The write gate lives in each route handler rather than here, because these
+// paths must still serve GET to logged-out visitors — see requireSession() in
+// src/lib/apiAuth.ts. Only the upload endpoint, which has no public GET, is
+// blocked wholesale at the proxy.
+const PROTECTED_API = ['/api/all-projects/upload'];
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -59,9 +46,7 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.json({ error: 'authentication required' }, { status: 401 });
   }
 
-  // '/' is exact-match only — treating it as a prefix would match every path,
-  // including /login, and send the browser into a redirect loop.
-  if (PROTECTED_PAGES.some(p => pathname === p || (p !== '/' && pathname.startsWith(`${p}/`)))) {
+  if (PROTECTED_PAGES.some(p => pathname === p || pathname.startsWith(`${p}/`))) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.search = `?next=${encodeURIComponent(pathname)}`;
@@ -76,35 +61,9 @@ export const config = {
   // `/api/all-projects/upload/:path*` alone does NOT match the bare
   // `/api/all-projects/upload`, which is the only path that route serves.
   matcher: [
-    '/',
     '/settings',
     '/settings/:path*',
-    '/all-projects',
-    '/all-projects/:path*',
-    '/projects',
-    '/projects/:path*',
-    '/live-projects',
-    '/live-projects/:path*',
-    '/priority-list',
-    '/priority-list/:path*',
-    '/marketing',
-    '/marketing/:path*',
-    '/project',
-    '/project/:path*',
     '/api/all-projects/upload',
     '/api/all-projects/upload/:path*',
-    '/api/all-projects/sync',
-    '/api/all-projects/sync/:path*',
-    // The [page] routes only ever serve `/api/sheet-sync/<page>`, which the
-    // bare form does NOT match — the `/:path*` entry is the one doing the work
-    // here. Both are listed so a future bare-path handler is covered too.
-    '/api/sheet-sync',
-    '/api/sheet-sync/:path*',
-    '/api/sheet-rows',
-    '/api/sheet-rows/:path*',
-    '/api/custom-fields',
-    '/api/custom-fields/:path*',
-    '/api/header-order',
-    '/api/header-order/:path*',
   ],
 };
