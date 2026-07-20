@@ -49,6 +49,33 @@ export function parseJson(v, fallback) {
 // Pinning keeps new installs and existing databases comparable.
 const COLLATE = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci';
 
+/**
+ * Apply a stored column-order preference to a sheet's live headers.
+ *
+ * The preference is a list of header names, which may drift from the workbook:
+ * a synced column can vanish, and a new one can appear. Reconciling rather than
+ * trusting either side outright:
+ *   - names in the override that no longer exist are dropped
+ *   - names in the workbook that the override never saw are appended, in
+ *     workbook order, so a newly synced column shows up at the end instead of
+ *     silently disappearing
+ *   - a duplicate header name is consumed once, matching the first-wins
+ *     behaviour of the name-keyed cell lookup in the table renderers
+ *
+ * Returns a new array; never mutates either input.
+ */
+export function applyHeaderOrder(headers, order) {
+  if (!Array.isArray(order) || !order.length) return headers;
+  const remaining = [...headers];
+  const ordered = [];
+  for (const name of order) {
+    const i = remaining.indexOf(name);
+    if (i !== -1) ordered.push(remaining.splice(i, 1)[0]);
+  }
+  // `remaining` now holds exactly the headers the override didn't mention.
+  return [...ordered, ...remaining];
+}
+
 export async function ensureTables(conn) {
   await conn.query(`
     CREATE TABLE IF NOT EXISTS sheet_tabs (
@@ -57,6 +84,11 @@ export async function ensureTables(conn) {
       sheet_name  VARCHAR(255) NOT NULL,
       position    INT          NOT NULL DEFAULT 0,
       headers     JSON         NOT NULL,
+      -- A user's preferred column order, as an array of header NAMES. Names, not
+      -- indices, so the order survives Google inserting a column mid-sheet. NULL
+      -- means "no preference — use the workbook order". Deliberately absent from
+      -- the sync upsert below so a re-sync never clobbers it.
+      header_order JSON        NULL,
       synced_at   BIGINT       NOT NULL DEFAULT 0,
       updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),

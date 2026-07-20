@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { CustomField } from '@/lib/useCustomFields';
+import { ReorderableHeader } from './ReorderableHeader';
 
 // Shared UI for the database-backed custom fields, so every table that renders
 // extra columns gets the same toolbar control, header chip and cell editor.
@@ -68,31 +69,44 @@ export function AddFieldButton({
   );
 }
 
-/** Header cell for one custom field, with an inline delete control. */
+/** Header cell for one custom field: draggable, with inline move and delete. */
 export function CustomFieldHeader({
   field,
+  index,
+  count,
+  onMove,
   onDelete,
   className = '',
 }: {
   field: CustomField;
+  index: number;
+  count: number;
+  onMove: (from: number, to: number) => void;
   onDelete: (field: CustomField) => void;
   className?: string;
 }) {
   return (
-    <th className={`text-left font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 bg-indigo-50/40 ${className}`}>
-      <span className="inline-flex items-center gap-1.5">
-        {field.label}
-        <button
-          type="button"
-          onClick={() => onDelete(field)}
-          aria-label={`Delete field ${field.label}`}
-          title="Delete this field"
-          className="text-slate-400 hover:text-rose-600"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </span>
-    </th>
+    <ReorderableHeader
+      index={index}
+      count={count}
+      // Custom fields reorder among themselves, never into the synced columns:
+      // they are a separate list with its own persisted positions.
+      group="custom-field"
+      label={field.label}
+      onMove={onMove}
+      className={`bg-indigo-50/40 ${className}`}
+    >
+      {field.label}
+      <button
+        type="button"
+        onClick={() => onDelete(field)}
+        aria-label={`Delete field ${field.label}`}
+        title="Delete this field"
+        className="text-slate-500 hover:text-rose-600"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </ReorderableHeader>
   );
 }
 

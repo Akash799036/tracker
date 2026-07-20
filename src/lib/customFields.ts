@@ -110,6 +110,47 @@ export async function deleteField(id: number, pageKey: string): Promise<boolean>
   return res.affectedRows > 0;
 }
 
+/**
+ * Persist a new ordering for one sheet's custom fields.
+ *
+ * `orderedIds` is the full set of field ids for (pageKey, sheetName) in their
+ * new order. Rewriting every position in one transaction — rather than swapping
+ * a pair — keeps positions dense and total, so a drag across several columns and
+ * a single move up both land the same way.
+ *
+ * Returns false if the ids don't match exactly the fields on that sheet, which
+ * is how a stale client (or one page's ids aimed at another) gets rejected
+ * instead of silently reordering a subset.
+ */
+export async function reorderFields(
+  pageKey: string, sheetName: string, orderedIds: number[]
+): Promise<boolean> {
+  await ensureTables();
+  const existing = await listFields(pageKey, sheetName);
+  if (existing.length !== orderedIds.length) return false;
+  const known = new Set(existing.map(f => f.id));
+  if (orderedIds.some(id => !known.has(id))) return false;
+  if (new Set(orderedIds).size !== orderedIds.length) return false;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (let i = 0; i < orderedIds.length; i++) {
+      await conn.execute(
+        'UPDATE custom_fields SET position = ? WHERE id = ? AND page_key = ? AND sheet_name = ?',
+        [i, orderedIds[i], pageKey, sheetName]
+      );
+    }
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+  return true;
+}
+
 /** Verify a field belongs to the given page before mutating its values. */
 async function fieldBelongsToPage(fieldId: number, pageKey: string): Promise<boolean> {
   const rows = await query<(RowDataPacket & { id: number })[]>(

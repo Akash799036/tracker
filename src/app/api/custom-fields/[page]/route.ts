@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isValidPageKey } from '@/lib/sheetSync';
 import {
-  listFields, listValues, addField, deleteField, setValue,
+  listFields, listValues, addField, deleteField, setValue, reorderFields,
 } from '@/lib/customFields';
 
 export const dynamic = 'force-dynamic';
@@ -51,12 +51,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ page: s
   }
 }
 
-// PATCH /api/custom-fields/:page  { fieldId, rowUid, value }
+// PATCH /api/custom-fields/:page
+//   { sheetName, order: number[] }     — reorder this sheet's fields
+//   { fieldId, rowUid, value }         — set one cell value
 export async function PATCH(req: Request, { params }: { params: Promise<{ page: string }> }) {
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) return badPage(pageKey);
   try {
     const body = await req.json().catch(() => ({}));
+
+    // Reorder branch, distinguished by the presence of `order`.
+    if (Array.isArray(body?.order)) {
+      const sheetName = String(body?.sheetName ?? '').trim();
+      if (!sheetName) {
+        return NextResponse.json({ error: 'sheetName is required' }, { status: 400 });
+      }
+      const order = body.order.map(Number);
+      if (order.some((n: number) => !Number.isInteger(n))) {
+        return NextResponse.json({ error: 'order must be field ids' }, { status: 400 });
+      }
+      const ok = await reorderFields(pageKey, sheetName, order);
+      if (!ok) {
+        return NextResponse.json(
+          { error: 'order must list exactly this sheet\'s fields' }, { status: 409 }
+        );
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     const fieldId = Number(body?.fieldId);
     const rowUid = String(body?.rowUid ?? '').trim();
     const value = String(body?.value ?? '');
