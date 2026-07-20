@@ -5,6 +5,8 @@ import * as XLSX from 'xlsx';
 import { ALL_PROJECTS_STORAGE_KEY, type AllProjectsData, type AllProjectsSheet } from '@/lib/allProjectsTypes';
 import { download } from '@/lib/ui';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
+import { useCustomFields, vkey } from '@/lib/useCustomFields';
+import { AddFieldButton, CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 
 type OverrideMap = Record<string, { edits: Record<number, Record<string, string>>; deletes: number[] }>;
 const OVERRIDES_KEY = 'all-projects.overrides.v1';
@@ -66,6 +68,18 @@ export default function AllProjectsPage() {
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Database-backed custom fields (extra columns) for the active sheet.
+  const {
+    fields: customFields,
+    values: customValues,
+    busy: customBusy,
+    error: customError,
+    addField: addCustomField,
+    deleteField: deleteCustomField,
+    setValue: saveCustomValue,
+  } = useCustomFields('all-projects', activeSheet);
+
   const scrollBy = (dx: number) => scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
 
   useEffect(() => {
@@ -202,8 +216,13 @@ export default function AllProjectsPage() {
 
   const exportData = (format: 'xlsx' | 'csv') => {
     if (!sheet) return;
-    const rows = filteredRows.map(x => x.row);
-    const headers = sheet.headers;
+    // Merge custom-field columns into the exported view.
+    const rows = filteredRows.map(x => {
+      const merged: Record<string, unknown> = { ...x.row };
+      for (const f of customFields) merged[f.label] = customValues[vkey(f.id, x.origIdx)] ?? '';
+      return merged;
+    });
+    const headers = [...sheet.headers, ...customFields.map(f => f.label)];
     const baseName = `all-projects-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -274,10 +293,10 @@ export default function AllProjectsPage() {
         </div>
       </div>
 
-      {error && (
+      {(error || customError) && (
         <div className="rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 to-rose-50/50 px-4 py-3 text-[12px] text-rose-700 flex items-start gap-2 shadow-sm">
           <span className="mt-0.5">⚠️</span>
-          <span>{error}</span>
+          <span>{error || customError}</span>
         </div>
       )}
 
@@ -362,6 +381,7 @@ export default function AllProjectsPage() {
                         className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50"
                       >CSV</button>
                     </div>
+                    <AddFieldButton onAdd={addCustomField} busy={customBusy} />
                   </div>
                 </div>
 
@@ -373,6 +393,14 @@ export default function AllProjectsPage() {
                           <th key={h} className="text-left text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200">
                             {h}
                           </th>
+                        ))}
+                        {customFields.map(f => (
+                          <CustomFieldHeader
+                            key={`cf-${f.id}`}
+                            field={f}
+                            onDelete={deleteCustomField}
+                            className="text-[10.5px] uppercase tracking-wider py-2.5"
+                          />
                         ))}
                         <th className="text-right text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
                           Actions
@@ -400,6 +428,13 @@ export default function AllProjectsPage() {
                                 </td>
                               );
                             })}
+                            {customFields.map(f => (
+                              <CustomFieldCell
+                                key={`cf-${f.id}`}
+                                value={customValues[vkey(f.id, origIdx)] ?? ''}
+                                onSave={val => saveCustomValue(f.id, origIdx, val)}
+                              />
+                            ))}
                             <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
                               {isEditing ? (
                                 <>
@@ -422,7 +457,7 @@ export default function AllProjectsPage() {
                       })}
                       {filteredRows.length === 0 && (
                         <tr>
-                          <td colSpan={(sheet.headers.length || 1) + 1} className="px-3 py-10 text-center text-slate-500 italic">
+                          <td colSpan={(sheet.headers.length || 1) + customFields.length + 1} className="px-3 py-10 text-center text-slate-500 italic">
                             No matching rows.
                           </td>
                         </tr>
