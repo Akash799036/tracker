@@ -10,6 +10,7 @@ import {
   aggregateStatus,
   classifyStatuses,
   collectProjectsByPM,
+  countLiveProjects,
   countProjectRecords,
   hydrateFromServer,
   readAllSummaries,
@@ -243,6 +244,11 @@ export default function Dashboard() {
   const platformMap = useMemo(() => aggregatePlatform(categorySummaries), [categorySummaries]);
   const buckets = useMemo(() => classifyStatuses(statusMap), [statusMap]);
 
+  // Live is scoped to the Live Projects workbook and to rows with complete
+  // project details — not derived from the cross-workbook status buckets, which
+  // counted any 'Deployed'/'Delivered' row from Marketing, Ongoing, etc.
+  const liveCount = useMemo(() => countLiveProjects(categorySummaries), [categorySummaries]);
+
   const categories = useMemo(() => aggregateByCategory(categorySummaries), [categorySummaries]);
   const pmSummaries = useMemo(() => aggregateByPM(categories), [categories]);
   const pmMax = pmSummaries[0]?.total ?? 0;
@@ -337,7 +343,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         <StatCard label="Total records" value={totalRows}        sub={`${buckets.total} with a status`} tone="brand"   icon={IconLayers} />
         <StatCard label="In progress"   value={buckets.progress} sub="active development"               tone="sky"     icon={IconPlay} />
-        <StatCard label="Live"          value={buckets.live}     sub="live / delivered"                 tone="emerald" icon={IconCheck} />
+        <StatCard label="Live"          value={liveCount}        sub="from Live Projects sheet"         tone="emerald" icon={IconCheck} />
         <StatCard label="Review / QA"   value={buckets.review}   sub="testing / review"                 tone="violet"  icon={IconEye} />
         <StatCard label="On hold"       value={buckets.hold}     sub="paused / blocked"                 tone="amber"   icon={IconPause} />
       </div>

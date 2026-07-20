@@ -592,3 +592,58 @@ export function countProjectRecords(summaries: PageSummary[]): number {
   }
   return count;
 }
+
+/**
+ * The tab inside the Live Projects workbook that holds delivered projects. The
+ * workbook's other tabs are 'Ecommerce details' and 'Monthly live project
+ * count' — a rollup and a reference table, both already in NON_PROJECT_SHEETS.
+ */
+const LIVE_DETAILS_SHEET = 'project complete details';
+
+/**
+ * Count of Live projects: the rows of the Live Projects workbook's
+ * 'Project complete details' tab.
+ *
+ * Deliberately does not go through `collectStatusRows`/`classifyStatuses`.
+ * Those sweep every workbook and bucket by status text, so any row reading
+ * 'Deployed' or 'Delivered' in Marketing, Ongoing or Priority inflated this
+ * card. The Live number is defined by the Live Projects sheet alone.
+ *
+ * A row counts once it has a project name — that tab has no status column, so
+ * presence on it *is* the signal that a project went live. Requiring more (a
+ * live date, a PM) would undercount: the PM column does not exist there, and
+ * live-date blanks are backfill gaps, not evidence a project is not live.
+ */
+export function countLiveProjects(summaries: PageSummary[]): number {
+  const sum = summaries.find(s => s.source.page === 'live-projects');
+  if (!sum?.data) return 0;
+
+  const seen = new Set<string>();
+  let count = 0;
+
+  for (const sheet of sum.data.sheets) {
+    if (!sheet.rows.length) continue;
+    if (sheet.name.trim().toLowerCase() !== LIVE_DETAILS_SHEET) continue;
+
+    // Scan rows for the name header rather than trusting row 0, as
+    // `collectStatusRows` does — a blank leading row would otherwise skip the tab.
+    let nameKey: string | null = null;
+    for (const row of sheet.rows) {
+      nameKey = findKey(row.cells, NAME_KEYS);
+      if (nameKey) break;
+    }
+    if (!nameKey) continue;
+
+    for (const row of sheet.rows) {
+      if (row.hidden) continue;
+      if (row.uid) {
+        if (seen.has(row.uid)) continue;
+        seen.add(row.uid);
+      }
+      // Skip spacer/blank rows: a project row always carries a name.
+      if (String(row.cells[nameKey] ?? '').trim().length === 0) continue;
+      count += 1;
+    }
+  }
+  return count;
+}
