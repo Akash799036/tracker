@@ -14,10 +14,8 @@ import { download } from '@/lib/ui';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { ReorderableHeader } from './ReorderableHeader';
-import { useRowExtras } from '@/lib/useRowExtras';
 import { CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from './AddRowForm';
-import { RowExtrasCell } from './RowExtrasControls';
 
 // Rows, edits and deletes all live in the database now (see /api/sheet-rows).
 // There is no local override layer: an edit one person makes is an edit everyone
@@ -67,19 +65,6 @@ export default function SheetSyncPanel({
     setValue: saveCustomValue,
     reorderFields: reorderCustomFields,
   } = useCustomFields(pageKey, activeSheet);
-
-  // Per-row ad-hoc fields for the active sheet.
-  const {
-    byRow: extrasByRow,
-    allLabels: extraLabels,
-    busy: extrasBusy,
-    error: extrasError,
-    addExtra,
-    setExtraValue,
-    renameExtra,
-    deleteExtra,
-    forgetRow,
-  } = useRowExtras(pageKey, activeSheet);
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -161,21 +146,17 @@ export default function SheetSyncPanel({
     pageKey, activeSheet, sheet?.headers ?? EMPTY
   );
 
-  // Search spans the sheet's own cells, the custom-field columns and the per-row
-  // extras, so a row is findable by anything visible on it.
+  // Search spans the sheet's own cells and the custom-field columns, so a row is
+  // findable by anything visible on it.
   const filteredRows = useMemo(() => {
     const rows = sheet?.rows ?? [];
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(r => {
       if (Object.values(r.cells).some(v => toStr(v).toLowerCase().includes(q))) return true;
-      if (customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q))) return true;
-      const extras = extrasByRow.get(r.uid) || [];
-      return extras.some(e =>
-        e.label.toLowerCase().includes(q) || e.value.toLowerCase().includes(q)
-      );
+      return customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q));
     });
-  }, [sheet, query, customFields, customValues, extrasByRow]);
+  }, [sheet, query, customFields, customValues]);
 
   const beginEdit = (row: SheetRowRecord) => {
     setEditingUid(row.uid);
@@ -253,7 +234,6 @@ export default function SheetSyncPanel({
         const json = await res.json().catch(() => ({}));
         throw new Error(json?.error || 'could not delete that row');
       }
-      forgetRow(row.uid);
       await refresh();
       if (editingUid === row.uid) cancelEdit();
     } catch (e: any) {
@@ -263,18 +243,13 @@ export default function SheetSyncPanel({
 
   const exportData = (format: 'xlsx' | 'csv') => {
     if (!sheet) return;
-    // Merge custom-field columns and every extras label into the exported view.
-    // Built from the reordered `headers`, not the raw sheet order, so an export
-    // matches the column order on screen.
-    const exportHeaders = [
-      ...headers,
-      ...customFields.map(f => f.label),
-      ...extraLabels,
-    ];
+    // Merge the custom-field columns into the exported view. Built from the
+    // reordered `headers`, not the raw sheet order, so an export matches the
+    // column order on screen.
+    const exportHeaders = [...headers, ...customFields.map(f => f.label)];
     const rows = filteredRows.map(r => {
       const merged: Record<string, unknown> = { ...r.cells };
       for (const f of customFields) merged[f.label] = customValues[vkey(f.id, r.uid)] ?? '';
-      for (const e of extrasByRow.get(r.uid) || []) merged[e.label] = e.value;
       return merged;
     });
     const baseName = `${pageKey}-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
@@ -310,9 +285,9 @@ export default function SheetSyncPanel({
         </div>
       </div>
 
-      {(error || customError || extrasError || orderError) && (
+      {(error || customError || orderError) && (
         <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700">
-          {error || customError || extrasError || orderError}
+          {error || customError || orderError}
         </div>
       )}
 
@@ -408,12 +383,6 @@ export default function SheetSyncPanel({
                           onDelete={deleteCustomField}
                         />
                       ))}
-                      {/* Pinned beside Actions: on a wide sheet these columns
-                          would otherwise sit past the right edge, leaving the
-                          per-row fields invisible until someone scrolls. */}
-                      <th className="text-left font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 bg-amber-50 sticky right-[7.5rem]">
-                        Row fields
-                      </th>
                       <th className="text-right font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50">
                         Actions
                       </th>
@@ -447,16 +416,6 @@ export default function SheetSyncPanel({
                               onSave={val => saveCustomValue(f.id, row.uid, val)}
                             />
                           ))}
-                          <RowExtrasCell
-                            rowUid={row.uid}
-                            extras={extrasByRow.get(row.uid) || []}
-                            onAdd={addExtra}
-                            onSetValue={setExtraValue}
-                            onRename={renameExtra}
-                            onDelete={deleteExtra}
-                            busy={extrasBusy}
-                            className="sticky right-[7.5rem] bg-amber-50/70"
-                          />
                           <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
                             {isEditing ? (
                               <>
@@ -484,7 +443,7 @@ export default function SheetSyncPanel({
                     {addingRow && (
                       <AddRowFormRow
                         headers={headers}
-                        trailingCols={customFields.length + 1}
+                        trailingCols={customFields.length}
                         busy={rowBusy}
                         onSave={addRow}
                         onCancel={() => setAddingRow(false)}
@@ -493,7 +452,7 @@ export default function SheetSyncPanel({
                     )}
                     {filteredRows.length === 0 && !addingRow && (
                       <tr>
-                        <td colSpan={(headers.length || 1) + customFields.length + 2} className="px-3 py-6 text-center text-slate-500">
+                        <td colSpan={(headers.length || 1) + customFields.length + 1} className="px-3 py-6 text-center text-slate-500">
                           {totalRows === 0 ? 'No rows yet. Use Add Row to create one.' : 'No matching rows.'}
                         </td>
                       </tr>

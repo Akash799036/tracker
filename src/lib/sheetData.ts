@@ -18,11 +18,10 @@ import {
 //   sheet_tabs   — one row per (page_key, sheet_name) tab: ordered headers and a
 //                  per-page synced-at timestamp.
 //   sheet_rows   — one data row per sheet row, keyed by a stable row_uid that
-//                  survives re-syncs. row_extras and custom_field_values point at
-//                  that uid. cells holds the synced values; cells_override holds
-//                  a user's edit, merged over cells on read so an edit is not
-//                  lost at the next sync.
-//   row_extras   — per-row ad-hoc key/value pairs (see rowExtras.ts).
+//                  survives re-syncs. custom_field_values points at that uid.
+//                  cells holds the synced values; cells_override holds a user's
+//                  edit, merged over cells on read so an edit is not lost at the
+//                  next sync.
 //
 // Tables are created lazily so no manual migration step is required for a fresh
 // install. An EXISTING database needs `npm run migrate` once to add the identity
@@ -162,7 +161,7 @@ export async function rowBelongsToPage(rowUid: string, pageKey: string): Promise
   return rows.length > 0;
 }
 
-/** Look up which sheet a row lives on, for scoping its extras. */
+/** Look up which sheet a row lives on. */
 export async function getRowContext(
   rowUid: string, pageKey: string
 ): Promise<{ sheetName: string; headers: string[] } | null> {
@@ -299,6 +298,9 @@ export async function deleteRow(pageKey: string, rowUid: string): Promise<boolea
   if (!rows.length) return false;
 
   if (rows[0].origin === 'user') {
+    // The per-row fields feature is gone, but the row_extras table is kept for
+    // its historical data. Nothing writes to it now; this only stops a deleted
+    // row from leaving rows behind there.
     await query<ResultSetHeader>('DELETE FROM row_extras WHERE row_uid = ?', [rowUid]);
     await query<ResultSetHeader>('DELETE FROM custom_field_values WHERE row_uid = ?', [rowUid]);
     await query<ResultSetHeader>('DELETE FROM sheet_rows WHERE row_uid = ?', [rowUid]);
