@@ -2,26 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { ALL_PROJECTS_PAGE_KEY, ALL_PROJECTS_STORAGE_KEY, type AllProjectsData, type AllProjectsSheet } from '@/lib/allProjectsTypes';
+import {
+  ALL_PROJECTS_PAGE_KEY,
+  ALL_PROJECTS_STORAGE_KEY,
+  type AllProjectsData,
+  type AllProjectsSheet,
+  type SheetRowRecord,
+} from '@/lib/allProjectsTypes';
 import { download } from '@/lib/ui';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
+import { useRowExtras } from '@/lib/useRowExtras';
 import { AddFieldButton, CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
+import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
+import { RowExtrasCell } from '@/components/RowExtrasControls';
 
-type OverrideMap = Record<string, { edits: Record<number, Record<string, string>>; deletes: number[] }>;
-const OVERRIDES_KEY = 'all-projects.overrides.v1';
-
-function loadOverrides(): OverrideMap {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(OVERRIDES_KEY);
-    return raw ? (JSON.parse(raw) as OverrideMap) : {};
-  } catch { return {}; }
-}
-
-function saveOverridesLS(map: OverrideMap) {
-  try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(map)); } catch {}
-}
+// Rows, edits and deletes all live in the database now (see /api/sheet-rows).
+// There is no local override layer: an edit one person makes is an edit everyone
+// sees, which is the only behaviour that makes sense once rows are shared.
 
 function loadCached(): AllProjectsData | null {
   if (typeof window === 'undefined') return null;
@@ -63,9 +61,10 @@ export default function AllProjectsPage() {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState<'sync' | 'upload' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [overrides, setOverrides] = useState<OverrideMap>({});
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
+  const [addingRow, setAddingRow] = useState(false);
+  const [rowBusy, setRowBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -80,7 +79,35 @@ export default function AllProjectsPage() {
     setValue: saveCustomValue,
   } = useCustomFields(ALL_PROJECTS_PAGE_KEY, activeSheet);
 
+  // Per-row ad-hoc fields for the active sheet.
+  const {
+    byRow: extrasByRow,
+    allLabels: extraLabels,
+    busy: extrasBusy,
+    error: extrasError,
+    addExtra,
+    setExtraValue,
+    renameExtra,
+    deleteExtra,
+    forgetRow,
+  } = useRowExtras(ALL_PROJECTS_PAGE_KEY, activeSheet);
+
   const scrollBy = (dx: number) => scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
+
+  /** Pull the authoritative rows back after a mutation. */
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch('/api/all-projects/sync', { cache: 'no-store' });
+      if (!res.ok) return;
+      const fresh = (await res.json()) as AllProjectsData | null;
+      if (!fresh?.sheets?.length) return;
+      setData(fresh);
+      persist(fresh);
+      setActiveSheet(prev =>
+        fresh.sheets.find(s => s.name === prev) ? prev : fresh.sheets[0]?.name || ''
+      );
+    } catch { /* keep whatever is on screen */ }
+  }, []);
 
   useEffect(() => {
     // Paint instantly from the browser cache if present, then always refresh
@@ -91,7 +118,6 @@ export default function AllProjectsPage() {
       setData(cached);
       setActiveSheet(cached.sheets[0]?.name || '');
     }
-    setOverrides(loadOverrides());
     setReady(true);
 
     let cancelled = false;
@@ -158,71 +184,119 @@ export default function AllProjectsPage() {
     [data, activeSheet]
   );
 
-  const sheetOverride = overrides[activeSheet] || { edits: {}, deletes: [] };
-
-  const visibleRows = useMemo(() => {
-    if (!sheet) return [] as { row: Record<string, any>; origIdx: number }[];
-    const deletes = new Set(sheetOverride.deletes);
-    return sheet.rows
-      .map((r, i) => ({ row: { ...r, ...(sheetOverride.edits[i] || {}) }, origIdx: i }))
-      .filter(x => !deletes.has(x.origIdx));
-  }, [sheet, sheetOverride]);
-
-  const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return visibleRows;
-    return visibleRows.filter(x =>
-      Object.values(x.row).some(v => String(v ?? '').toLowerCase().includes(q))
-    );
-  }, [visibleRows, query]);
-
   const toStr = (v: unknown) => (v == null ? '' : String(v));
 
-  const beginEdit = (origIdx: number, row: Record<string, any>) => {
-    setEditingIdx(origIdx);
+  // Search spans the sheet's own cells, the custom-field columns and the per-row
+  // extras, so a row is findable by anything visible on it.
+  const filteredRows = useMemo(() => {
+    const rows = sheet?.rows ?? [];
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(r => {
+      if (Object.values(r.cells).some(v => toStr(v).toLowerCase().includes(q))) return true;
+      if (customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q))) return true;
+      const extras = extrasByRow.get(r.uid) || [];
+      return extras.some(e =>
+        e.label.toLowerCase().includes(q) || e.value.toLowerCase().includes(q)
+      );
+    });
+  }, [sheet, query, customFields, customValues, extrasByRow]);
+
+  const beginEdit = (row: SheetRowRecord) => {
+    setEditingUid(row.uid);
     const draft: Record<string, string> = {};
-    for (const k of Object.keys(row)) draft[k] = toStr(row[k]);
+    for (const h of sheet?.headers ?? []) draft[h] = toStr(row.cells[h]);
     setEditDraft(draft);
   };
-  const cancelEdit = () => { setEditingIdx(null); setEditDraft({}); };
-  const saveEdit = (origIdx: number) => {
+  const cancelEdit = () => { setEditingUid(null); setEditDraft({}); };
+
+  const saveEdit = async (row: SheetRowRecord) => {
     if (!sheet) return;
-    const original = sheet.rows[origIdx] || {};
     const diff: Record<string, string> = {};
     for (const h of sheet.headers) {
       const next = editDraft[h] ?? '';
-      if (String((original as any)[h] ?? '') !== next) diff[h] = next;
+      if (toStr(row.cells[h]) !== next) diff[h] = next;
     }
-    const nextMap: OverrideMap = { ...overrides };
-    const prev = nextMap[activeSheet] || { edits: {}, deletes: [] };
-    const edits = { ...prev.edits };
-    if (Object.keys(diff).length === 0) delete edits[origIdx];
-    else edits[origIdx] = { ...(prev.edits[origIdx] || {}), ...diff };
-    nextMap[activeSheet] = { ...prev, edits };
-    setOverrides(nextMap);
-    saveOverridesLS(nextMap);
-    cancelEdit();
+    if (!Object.keys(diff).length) { cancelEdit(); return; }
+
+    setRowBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/sheet-rows/${ALL_PROJECTS_PAGE_KEY}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowUid: row.uid, cells: diff }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error || 'could not save that change');
+      }
+      await refresh();
+      cancelEdit();
+    } catch (e: any) {
+      setError(e?.message || 'could not save that change');
+    } finally {
+      setRowBusy(false);
+    }
   };
-  const deleteRow = (origIdx: number) => {
-    if (!confirm('Delete this row? (Local only — will not affect the source sheet.)')) return;
-    const nextMap: OverrideMap = { ...overrides };
-    const prev = nextMap[activeSheet] || { edits: {}, deletes: [] };
-    if (prev.deletes.includes(origIdx)) return;
-    nextMap[activeSheet] = { ...prev, deletes: [...prev.deletes, origIdx] };
-    setOverrides(nextMap);
-    saveOverridesLS(nextMap);
-    if (editingIdx === origIdx) cancelEdit();
+
+  const addRow = async (cells: Record<string, string>) => {
+    if (!sheet) return false;
+    setRowBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/sheet-rows/${ALL_PROJECTS_PAGE_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetName: sheet.name, cells }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'could not add that row');
+      await refresh();
+      setAddingRow(false);
+      return true;
+    } catch (e: any) {
+      setError(e?.message || 'could not add that row');
+      return false;
+    } finally {
+      setRowBusy(false);
+    }
+  };
+
+  const deleteRow = async (row: SheetRowRecord) => {
+    const message = row.origin === 'user'
+      ? 'Delete this row? This removes it for everyone, along with any fields on it.'
+      : 'Hide this row? It came from the source sheet, so it will stay hidden until you restore it.';
+    if (!confirm(message)) return;
+
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/sheet-rows/${ALL_PROJECTS_PAGE_KEY}?uid=${encodeURIComponent(row.uid)}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error || 'could not delete that row');
+      }
+      forgetRow(row.uid);
+      await refresh();
+      if (editingUid === row.uid) cancelEdit();
+    } catch (e: any) {
+      setError(e?.message || 'could not delete that row');
+    }
   };
 
   const exportData = (format: 'xlsx' | 'csv') => {
     if (!sheet) return;
-    // Merge custom-field columns into the exported view.
-    const rows = filteredRows.map(x => {
-      const merged: Record<string, unknown> = { ...x.row };
-      for (const f of customFields) merged[f.label] = customValues[vkey(f.id, x.origIdx)] ?? '';
+    // Merge custom-field columns and every extras label into the exported view.
+    const rows = filteredRows.map(r => {
+      const merged: Record<string, unknown> = { ...r.cells };
+      for (const f of customFields) merged[f.label] = customValues[vkey(f.id, r.uid)] ?? '';
+      for (const e of extrasByRow.get(r.uid) || []) merged[e.label] = e.value;
       return merged;
     });
-    const headers = [...sheet.headers, ...customFields.map(f => f.label)];
+    const headers = [...sheet.headers, ...customFields.map(f => f.label), ...extraLabels];
     const baseName = `all-projects-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
     if (format === 'csv') {
       const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -293,10 +367,10 @@ export default function AllProjectsPage() {
         </div>
       </div>
 
-      {(error || customError) && (
+      {(error || customError || extrasError) && (
         <div className="rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 to-rose-50/50 px-4 py-3 text-[12px] text-rose-700 flex items-start gap-2 shadow-sm">
           <span className="mt-0.5">⚠️</span>
-          <span>{error || customError}</span>
+          <span>{error || customError || extrasError}</span>
         </div>
       )}
 
@@ -382,6 +456,7 @@ export default function AllProjectsPage() {
                       >CSV</button>
                     </div>
                     <AddFieldButton onAdd={addCustomField} busy={customBusy} />
+                    <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
                   </div>
                 </div>
 
@@ -402,18 +477,24 @@ export default function AllProjectsPage() {
                             className="text-[10.5px] uppercase tracking-wider py-2.5"
                           />
                         ))}
+                        {/* Pinned beside Actions: on a wide sheet these columns
+                            would otherwise sit past the right edge, leaving the
+                            per-row fields invisible until someone scrolls. */}
+                        <th className="text-left text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200 bg-amber-50 sticky right-[6.5rem]">
+                          Row fields
+                        </th>
                         <th className="text-right text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
                           Actions
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredRows.map(({ row, origIdx }) => {
-                        const isEditing = editingIdx === origIdx;
+                      {filteredRows.map(row => {
+                        const isEditing = editingUid === row.uid;
                         return (
-                          <tr key={origIdx} className="hover:bg-brand-50/30 transition-colors">
+                          <tr key={row.uid} className="hover:bg-brand-50/30 transition-colors">
                             {sheet.headers.map(h => {
-                              const v = row[h];
+                              const v = row.cells[h];
                               return (
                                 <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-slate-700">
                                   {isEditing ? (
@@ -424,41 +505,65 @@ export default function AllProjectsPage() {
                                     />
                                   ) : looksLikeUrl(v)
                                     ? <a href={v} target="_blank" rel="noreferrer" className="text-brand-600 hover:text-brand-700 hover:underline break-all">{v}</a>
-                                    : (v == null ? '' : String(v))}
+                                    : toStr(v)}
                                 </td>
                               );
                             })}
                             {customFields.map(f => (
                               <CustomFieldCell
                                 key={`cf-${f.id}`}
-                                value={customValues[vkey(f.id, origIdx)] ?? ''}
-                                onSave={val => saveCustomValue(f.id, origIdx, val)}
+                                value={customValues[vkey(f.id, row.uid)] ?? ''}
+                                onSave={val => saveCustomValue(f.id, row.uid, val)}
                               />
                             ))}
+                            <RowExtrasCell
+                              rowUid={row.uid}
+                              extras={extrasByRow.get(row.uid) || []}
+                              onAdd={addExtra}
+                              onSetValue={setExtraValue}
+                              onRename={renameExtra}
+                              onDelete={deleteExtra}
+                              busy={extrasBusy}
+                              className="sticky right-[6.5rem] bg-amber-50/70"
+                            />
                             <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
                               {isEditing ? (
                                 <>
-                                  <button onClick={() => saveEdit(origIdx)}
-                                    className="text-emerald-600 hover:text-emerald-700 text-[11px] font-semibold mr-3">Save</button>
+                                  <button onClick={() => saveEdit(row)} disabled={rowBusy}
+                                    className="text-emerald-600 hover:text-emerald-700 text-[11px] font-semibold mr-3 disabled:opacity-50">
+                                    {rowBusy ? 'Saving…' : 'Save'}
+                                  </button>
                                   <button onClick={cancelEdit}
                                     className="text-slate-500 hover:text-slate-700 text-[11px] font-semibold">Cancel</button>
                                 </>
                               ) : (
                                 <>
-                                  <button onClick={() => beginEdit(origIdx, row)}
+                                  <button onClick={() => beginEdit(row)}
                                     className="text-brand-600 hover:text-brand-700 text-[11px] font-semibold mr-3">Edit</button>
-                                  <button onClick={() => deleteRow(origIdx)}
-                                    className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold">Delete</button>
+                                  <button onClick={() => deleteRow(row)}
+                                    className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold">
+                                    {row.origin === 'user' ? 'Delete' : 'Hide'}
+                                  </button>
                                 </>
                               )}
                             </td>
                           </tr>
                         );
                       })}
-                      {filteredRows.length === 0 && (
+                      {addingRow && (
+                        <AddRowFormRow
+                          headers={sheet.headers}
+                          trailingCols={customFields.length + 1}
+                          busy={rowBusy}
+                          onSave={addRow}
+                          onCancel={() => setAddingRow(false)}
+                          cellClassName="border-b border-slate-100"
+                        />
+                      )}
+                      {filteredRows.length === 0 && !addingRow && (
                         <tr>
-                          <td colSpan={(sheet.headers.length || 1) + customFields.length + 1} className="px-3 py-10 text-center text-slate-500 italic">
-                            No matching rows.
+                          <td colSpan={(sheet.headers.length || 1) + customFields.length + 2} className="px-3 py-10 text-center text-slate-500 italic">
+                            {sheet.rows.length === 0 ? 'No rows yet. Use Add Row to create one.' : 'No matching rows.'}
                           </td>
                         </tr>
                       )}

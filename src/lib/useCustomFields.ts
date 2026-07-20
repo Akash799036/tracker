@@ -15,14 +15,15 @@ export type CustomField = {
 
 export type CustomFieldValue = {
   fieldId: number;
-  rowKey: number;
+  /** Stable row identity — survives a re-sync, unlike the row's position. */
+  rowUid: string;
   value: string;
 };
 
-/** Value lookup keyed as `${fieldId}:${rowKey}`. */
+/** Value lookup keyed as `${fieldId}:${rowUid}`. */
 export type ValueMap = Record<string, string>;
 
-export const vkey = (fieldId: number, rowKey: number) => `${fieldId}:${rowKey}`;
+export const vkey = (fieldId: number, rowUid: string) => `${fieldId}:${rowUid}`;
 
 export function useCustomFields(pageKey: string, sheetName: string) {
   const [fields, setFields] = useState<CustomField[]>([]);
@@ -42,7 +43,7 @@ export function useCustomFields(pageKey: string, sheetName: string) {
       if (!res.ok) throw new Error(json?.error || 'failed to load fields');
       const map: ValueMap = {};
       for (const v of (json.values || []) as CustomFieldValue[]) {
-        map[vkey(v.fieldId, v.rowKey)] = v.value;
+        map[vkey(v.fieldId, v.rowUid)] = v.value;
       }
       setFields((json.fields || []) as CustomField[]);
       setValues(map);
@@ -98,13 +99,13 @@ export function useCustomFields(pageKey: string, sheetName: string) {
   }, [pageKey]);
 
   /** Persist a single cell value, optimistically updating local state first. */
-  const setValue = useCallback(async (fieldId: number, rowKey: number, value: string) => {
-    setValues(prev => ({ ...prev, [vkey(fieldId, rowKey)]: value }));
+  const setValue = useCallback(async (fieldId: number, rowUid: string, value: string) => {
+    setValues(prev => ({ ...prev, [vkey(fieldId, rowUid)]: value }));
     try {
       await fetch(`/api/custom-fields/${pageKey}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fieldId, rowKey, value }),
+        body: JSON.stringify({ fieldId, rowUid, value }),
       });
     } catch { /* value stays in local state; will re-sync on next load */ }
   }, [pageKey]);

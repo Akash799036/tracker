@@ -1,6 +1,6 @@
-import type { AllProjectsSheet, SheetRow, AllProjectsData } from './allProjectsTypes';
+import type { AllProjectsSheet, SheetRow, SheetRowRecord, AllProjectsData } from './allProjectsTypes';
 
-export type { AllProjectsSheet, SheetRow, AllProjectsData };
+export type { AllProjectsSheet, SheetRow, SheetRowRecord, AllProjectsData };
 
 export type SheetSyncPageKey =
   | 'projects'
@@ -10,7 +10,10 @@ export type SheetSyncPageKey =
   | 'all-projects'
   | 'dashboard';
 
-export const SHEET_SYNC_STORAGE_KEY = (key: SheetSyncPageKey) => `sheet-sync.${key}.v1`;
+// v2: rows became { uid, origin, cells } instead of a bare cell map. Bumping the
+// key drops v1 payloads rather than letting the table read cells off the wrong
+// shape and render blanks.
+export const SHEET_SYNC_STORAGE_KEY = (key: SheetSyncPageKey) => `sheet-sync.${key}.v2`;
 
 // Server-only: default Google Sheet ID per page. Override with env vars.
 const ALL_PROJECTS_FALLBACK = process.env.ALL_PROJECTS_SHEET_ID || '1F1hcq7Fu3vLcqIt3d0Ns30iz26RjvZRw3lGeDkVhjTM';

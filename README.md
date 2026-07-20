@@ -39,6 +39,69 @@ Open http://localhost:3000.
   `localStorage` shape), so you can migrate a browser profile with no
   changes.
 
+## Sheet data (MySQL)
+
+The sheet-backed pages (`/all-projects`, `/projects`, `/live-projects`,
+`/priority-list`, `/marketing`) do not use the localStorage store described
+above. They read from MySQL, seeded from Google Sheets.
+
+```bash
+npm run migrate   # one-off: add stable row identity to an existing database
+npm run seed      # pull every page's workbook into MySQL
+```
+
+**Run `npm run migrate` before the first `npm run seed` after upgrading.** It
+adds `row_uid` and friends to `sheet_rows` and backfills them. The seeder
+refuses to run without it, because it cannot match incoming rows to stored
+ones and would give every row a fresh identity — orphaning per-row data.
+
+### Row identity
+
+Each row has a `row_uid` that survives a re-sync; per-row fields and custom
+field values point at it. The seeder matches incoming rows to stored ones by
+natural key (`scripts/lib/rowIdentity.mjs`), preferring a discovered identity
+column (`Project Name`, `Url`, …) and otherwise hashing the row's contents.
+
+A content-hashed row loses its identity if any cell changes upstream: its
+extras orphan and it reads as a new row. Rows keyed off an identity column do
+not have that problem. The seeder prints the split on every run:
+
+```
+• projects … OK — 6 tab(s), 136 rows (136 matched, 0 new, 0 removed)
+  120 row(s) keyed by an identity column, 16 by content hash (churn if any cell changes)
+```
+
+If a page reports most rows as new on every seed, its sheets need a stable ID
+or name column.
+
+### Editing
+
+- **Add row** appends a row with `origin='user'`. The seeder never deletes
+  these — they do not exist upstream and would be destroyed on every sync.
+- **Edit** on a synced row writes `cells_override`, which the sync preserves
+  and reads merge over the synced values, so an edit is not lost at the next
+  sync. Editing a value back to its original clears the override.
+- **Delete** removes a user row outright (with its extras). A synced row is
+  only hidden — deleting it would just bring it back at the next sync.
+- **Row fields** (the amber column) are ad-hoc key/value pairs on a single
+  row. Distinct from **Add Field**, which adds a column to the whole sheet.
+
+All of these write to the database, so they are shared: an edit one person
+makes is an edit everyone sees.
+
+### Tables
+
+| Table | Holds |
+|---|---|
+| `sheet_tabs` | one row per (page, sheet tab): headers, position, synced-at |
+| `sheet_rows` | the data; `row_uid` identity, `cells`, `cells_override`, `origin`, `hidden` |
+| `custom_fields` / `custom_field_values` | sheet-wide extra columns, values keyed by `row_uid` |
+| `row_extras` | per-row ad-hoc fields, keyed by `row_uid` |
+
+`row_extras` has no foreign key to `sheet_rows` on purpose: the sync replaces
+seeded rows, and a cascading delete would wipe extras mid-sync. The seeder
+sweeps orphans after each page instead.
+
 ## Architecture
 
 ```
