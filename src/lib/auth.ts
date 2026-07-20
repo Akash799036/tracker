@@ -62,6 +62,19 @@ export async function verifyCredentials(username: string, password: string): Pro
     [username]
   );
   const user = rows[0];
+
+  // A password_hash that isn't in scrypt format means the column was edited by
+  // hand (e.g. a plaintext password typed into phpMyAdmin). It can never match,
+  // so login would fail as a plain "wrong password" with no hint as to why.
+  // Log the real cause; still return false rather than trusting the value.
+  if (user && !user.password_hash.startsWith('scrypt$')) {
+    console.error(
+      `[auth] user "${user.username}" has a password_hash that is not a scrypt hash — ` +
+        'it looks like it was set by hand in the database. Passwords must be written ' +
+        'with `npm run user -- password <username> <password>`, which hashes them.'
+    );
+  }
+
   const ok = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
   if (!user || !ok) return false;
 
