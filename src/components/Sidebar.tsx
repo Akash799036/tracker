@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/lib/authClient';
 
 const NAV = [
   { href: '/', label: 'Dashboard' },
@@ -13,6 +14,7 @@ const NAV = [
 
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const path = usePathname();
+  const { authenticated } = useAuth();
   const isActive = (href: string) => href === '/' ? path === '/' : path.startsWith(href);
   return (
     <>
@@ -33,10 +35,12 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
               {n.label}
             </Link>
           ))}
-          <Link href="/settings"
-            className={`nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-700 hover:bg-slate-100 mt-1 ${path.startsWith('/settings') ? 'active' : ''}`}>
-            Data &amp; Backup
-          </Link>
+          {authenticated && (
+            <Link href="/settings"
+              className={`nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-700 hover:bg-slate-100 mt-1 ${path.startsWith('/settings') ? 'active' : ''}`}>
+              Data &amp; Backup
+            </Link>
+          )}
         </nav>
       </aside>
       {open && <div onClick={onClose} className="fixed inset-0 bg-black/40 z-30 lg:hidden" />}
