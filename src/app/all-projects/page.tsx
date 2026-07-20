@@ -13,9 +13,11 @@ import { download } from '@/lib/ui';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
+import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
 import { CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
+import Pagination, { usePagination } from '@/components/Pagination';
 
 // Rows, edits and deletes all live in the database now (see /api/sheet-rows).
 // There is no local override layer: an edit one person makes is an edit everyone
@@ -176,6 +178,9 @@ export default function AllProjectsPage() {
     ALL_PROJECTS_PAGE_KEY, activeSheet, sheet?.headers ?? EMPTY
   );
 
+  // Clickable Project Manager cells → drill-down modal.
+  const { renderPMCell, pmModal } = usePMDrilldown(headers);
+
   const toStr = (v: unknown) => (v == null ? '' : String(v));
 
   // Search spans the sheet's own cells and the custom-field columns, so a row is
@@ -189,6 +194,11 @@ export default function AllProjectsPage() {
       return customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q));
     });
   }, [sheet, query, customFields, customValues]);
+
+  // Cap the table at 20 rows; searching or switching sheets returns to page 1.
+  const { page, setPage, totalPages, pageRows, from, to } = usePagination(
+    filteredRows, `${activeSheet}|${query}`
+  );
 
   const beginEdit = (row: SheetRowRecord) => {
     setEditingUid(row.uid);
@@ -446,7 +456,7 @@ export default function AllProjectsPage() {
                   </div>
                 </div>
 
-                <div ref={scrollRef} className="overflow-auto max-h-[60vh] sm:max-h-[70vh] scroll-smooth">
+                <div ref={scrollRef} className="overflow-auto scroll-smooth">
                   <table className="min-w-full text-[12.5px]">
                     <thead className="bg-slate-50/80 backdrop-blur text-slate-600 sticky top-0 z-10">
                       <tr>
@@ -480,7 +490,7 @@ export default function AllProjectsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredRows.map(row => {
+                      {pageRows.map(row => {
                         const isEditing = editingUid === row.uid;
                         return (
                           <tr key={row.uid} className="hover:bg-brand-50/30 transition-colors">
@@ -496,7 +506,7 @@ export default function AllProjectsPage() {
                                     />
                                   ) : looksLikeUrl(v)
                                     ? <a href={v} target="_blank" rel="noreferrer" className="text-brand-600 hover:text-brand-700 hover:underline break-all">{v}</a>
-                                    : toStr(v)}
+                                    : renderPMCell(h, v, toStr(v))}
                                 </td>
                               );
                             })}
@@ -551,11 +561,24 @@ export default function AllProjectsPage() {
                     </tbody>
                   </table>
                 </div>
+
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  from={from}
+                  to={to}
+                  total={filteredRows.length}
+                  onPageChange={setPage}
+                  label="projects"
+                  compact
+                />
               </>
             )}
           </section>
         </>
       )}
+
+      {pmModal}
     </div>
   );
 }
