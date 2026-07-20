@@ -39,7 +39,8 @@ export type AllProjectsData = {
   sourceName?: string;
 };
 
-export const ALL_PROJECTS_STORAGE_KEY = 'all-projects.v1';
+// v2: see the note on SHEET_SYNC_STORAGE_KEY — the row shape changed.
+export const ALL_PROJECTS_STORAGE_KEY = 'all-projects.v2';
 
 // The all-projects workbook is stored under the "dashboard" page key (seeded by
 // scripts/seed-sheets.mjs). The page's rows AND its custom fields must both use
