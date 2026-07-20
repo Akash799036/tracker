@@ -15,7 +15,7 @@ import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
 import { useRowExtras } from '@/lib/useRowExtras';
-import { AddFieldButton, CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
+import { CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
 import { RowExtrasCell } from '@/components/RowExtrasControls';
 
@@ -74,9 +74,7 @@ export default function AllProjectsPage() {
   const {
     fields: customFields,
     values: customValues,
-    busy: customBusy,
     error: customError,
-    addField: addCustomField,
     deleteField: deleteCustomField,
     setValue: saveCustomValue,
     reorderFields: reorderCustomFields,
@@ -465,7 +463,6 @@ export default function AllProjectsPage() {
                         className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50"
                       >CSV</button>
                     </div>
-                    <AddFieldButton onAdd={addCustomField} busy={customBusy} />
                     <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
                   </div>
                 </div>

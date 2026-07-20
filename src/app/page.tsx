@@ -11,7 +11,6 @@ import {
   classifyStatuses,
   hydrateFromServer,
   readAllSummaries,
-  type CategoryPM,
   type PMSummary,
   type PageSummary,
 } from '@/lib/dashboardAggregate';
@@ -150,73 +149,6 @@ function PMAvatar({ name, size = 26 }: { name: string; size?: number }) {
     >
       {initials(name)}
     </span>
-  );
-}
-
-/** One project category (sheet tab) with the PM who owns most of it. */
-function CategoryCard({ cat }: { cat: CategoryPM }) {
-  const others = cat.managers.slice(1);
-  return (
-    <div className="glass rounded-xl p-3.5 ring-1 ring-slate-900/5 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200">
-      <div className="flex items-baseline justify-between gap-2">
-        <Link href={cat.href} className="text-[13px] font-semibold text-slate-900 truncate hover:text-brand-700">
-          {cat.category}
-        </Link>
-        <span className="shrink-0 text-[11px] text-slate-500">
-          <span className="text-[17px] font-bold tabular-nums text-slate-900">{cat.total}</span> projects
-        </span>
-      </div>
-
-      {cat.lead ? (
-        <div className="mt-3 flex items-center gap-2.5">
-          <PMAvatar name={cat.lead.name} size={30} />
-          <div className="min-w-0 flex-1">
-            <div className="text-[12.5px] font-semibold text-slate-900 truncate">{cat.lead.name}</div>
-            <div className="text-[10.5px] text-slate-500">
-              Project Manager · {cat.lead.count} of {cat.total}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-3 text-[11.5px] italic text-slate-500">No PM assigned</div>
-      )}
-
-      {/* Share-of-category bar, segmented per PM */}
-      {cat.managers.length > 0 && (
-        <div className="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-500/10">
-          {cat.managers.map(m => (
-            <div
-              key={m.name}
-              style={{ width: `${(m.count / cat.total) * 100}%`, background: pmColor(m.name) }}
-              title={`${m.name}: ${m.count}`}
-            />
-          ))}
-        </div>
-      )}
-
-      {(others.length > 0 || cat.unassigned > 0) && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          {others.slice(0, 4).map(m => (
-            <span
-              key={m.name}
-              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
-              title={`${m.name}: ${m.count} project${m.count === 1 ? '' : 's'}`}
-            >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: pmColor(m.name) }} />
-              {m.name} {m.count}
-            </span>
-          ))}
-          {others.length > 4 && (
-            <span className="text-[10px] text-slate-500">+{others.length - 4} more</span>
-          )}
-          {cat.unassigned > 0 && (
-            <span className="inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-              {cat.unassigned} unassigned
-            </span>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -387,30 +319,9 @@ export default function Dashboard() {
         <StatCard label="On hold"       value={buckets.hold}                                      tone="amber"   icon={IconPause} />
       </div>
 
-      {/* Projects by category + PM — the primary view */}
+      {/* Project managers */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <section className="glass rounded-2xl p-4 lg:col-span-8">
-          <div className="flex items-baseline justify-between mb-3">
-            <div>
-              <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Projects by category</h2>
-              <p className="mt-0.5 text-[10.5px] text-slate-500">Assigned Project Manager and project count per category</p>
-            </div>
-            <span className="text-[10.5px] text-slate-500">{categories.length} categories</span>
-          </div>
-          {categories.length === 0 ? (
-            <div className="py-10 text-center text-[11.5px] italic text-slate-500">
-              No project-manager data found yet
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-              {categories.map(cat => (
-                <CategoryCard key={`${cat.sourceLabel}:${cat.category}`} cat={cat} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="glass rounded-2xl p-4 lg:col-span-4">
+        <section className="glass rounded-2xl p-4 lg:col-span-12">
           <div className="flex items-baseline justify-between mb-3">
             <div>
               <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Project Managers</h2>
