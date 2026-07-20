@@ -72,14 +72,13 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
       ) : (
         <Link href="/login"
           title="Sign in"
-          className="shrink-0 h-10 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 flex items-center gap-1.5"
+          className="shrink-0 h-10 w-10 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 grid place-items-center"
           aria-label="Sign in">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
             <polyline points="10 17 15 12 10 7" />
             <line x1="15" y1="12" x2="3" y2="12" />
           </svg>
-          <span className="hidden sm:inline">Sign in</span>
         </Link>
       ))}
       <button onClick={onMenu} className="lg:hidden p-2 rounded-lg hover:bg-slate-100 shrink-0" aria-label="Menu">
