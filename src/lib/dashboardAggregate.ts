@@ -5,6 +5,7 @@ import {
   type SheetSyncPageKey,
 } from './sheetSync';
 import { ALL_PROJECTS_STORAGE_KEY } from './allProjectsTypes';
+import { classifyStatus, type StatusCounts } from './projectStatus';
 
 export type DashboardSourceKey =
   | 'all-projects'
@@ -97,6 +98,26 @@ export async function hydrateFromServer(): Promise<void> {
 const STATUS_KEYS = ['status', 'project status', 'current status', 'stage'];
 const PLATFORM_KEYS = ['platform', 'technology', 'tech', 'stack', 'type'];
 
+// Tabs that hold infrastructure/notes rather than projects. Declared here
+// because the status aggregation below needs it too, and `const` does not hoist.
+const NON_PROJECT_SHEETS = new Set([
+  'servers',
+  'sheet1',
+  'sheet2',
+  'sheet3',
+  'work distribute',
+  'monthly live project count',
+  'ecommerce details',
+]);
+
+/**
+ * Header names that look like a status column but describe something else.
+ * 'SSL Status' is certificate health, not project state — matching it counted
+ * 58 valid SSL certs as 58 in-progress projects. 'Upcoming Status' is a
+ * next-steps worklog note, not the current state.
+ */
+const STATUS_KEY_BLOCKLIST = [/\bssl\b/, /\bupcoming\b/, /\bdomain\b/, /\bhosting\b/, /\bpayment\b/];
+
 function findKey(row: SheetRow, candidates: string[]): string | null {
   const keys = Object.keys(row);
   for (const c of candidates) {
@@ -105,6 +126,24 @@ function findKey(row: SheetRow, candidates: string[]): string | null {
   }
   for (const c of candidates) {
     const hit = keys.find(k => k.trim().toLowerCase().includes(c));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Locate the project-status column, ignoring headers that merely contain the
+ * word 'status'. Unlike `findKey` this never falls back to a loose substring
+ * match, because a wrong column here corrupts every KPI on the dashboard.
+ */
+function findStatusKey(row: SheetRow): string | null {
+  const keys = Object.keys(row);
+  const allowed = (k: string) => {
+    const low = k.trim().toLowerCase();
+    return !STATUS_KEY_BLOCKLIST.some(re => re.test(low));
+  };
+  for (const c of STATUS_KEYS) {
+    const hit = keys.find(k => k.trim().toLowerCase() === c && allowed(k));
     if (hit) return hit;
   }
   return null;
@@ -130,8 +169,52 @@ export function aggregateColumn(summaries: PageSummary[], candidates: string[]):
   return map;
 }
 
+/**
+ * Every project row that carries a real status column, deduped by uid.
+ *
+ * This is the single source of truth behind the KPI cards, so the filtering
+ * has to match `aggregateByCategory` exactly (same non-project tabs skipped,
+ * same hidden-row skip, same uid dedupe) or the cards will disagree with the
+ * category totals directly beneath them.
+ */
+export function collectStatusRows(summaries: PageSummary[]): { uid: string; status: unknown }[] {
+  const out: { uid: string; status: unknown }[] = [];
+  // The 'dashboard' and 'all-projects' source keys point at the same workbook,
+  // so its rows arrive twice. Row uids are globally unique — keep first sighting.
+  const seen = new Set<string>();
+
+  for (const sum of summaries) {
+    if (!sum.data) continue;
+    for (const sheet of sum.data.sheets) {
+      if (!sheet.rows.length) continue;
+      if (NON_PROJECT_SHEETS.has(sheet.name.trim().toLowerCase())) continue;
+
+      // Scan every row for the header, not just row 0: a sheet whose first row
+      // happens to omit the status key would otherwise be skipped wholesale.
+      let key: string | null = null;
+      for (const row of sheet.rows) {
+        key = findStatusKey(row.cells);
+        if (key) break;
+      }
+      if (!key) continue;
+
+      for (const row of sheet.rows) {
+        if (row.hidden) continue;
+        if (row.uid) {
+          if (seen.has(row.uid)) continue;
+          seen.add(row.uid);
+        }
+        out.push({ uid: row.uid, status: row.cells[key] });
+      }
+    }
+  }
+  return out;
+}
+
 export function aggregateStatus(summaries: PageSummary[]) {
-  return aggregateColumn(summaries, STATUS_KEYS);
+  const map = new Map<string, number>();
+  for (const { status } of collectStatusRows(summaries)) bumpCount(map, status);
+  return map;
 }
 
 export function aggregatePlatform(summaries: PageSummary[]) {
@@ -244,9 +327,6 @@ export type PMSummary = {
   /** Per-category breakdown for this PM, most projects first. */
   categories: { category: string; count: number }[];
 };
-
-// Tabs that hold infrastructure/notes rather than projects.
-const NON_PROJECT_SHEETS = new Set(['servers', 'sheet1']);
 
 /**
  * Group every project row by its category (the sheet/tab name) and, within
@@ -465,17 +545,50 @@ export function findPMHeader(headers: string[]): string | null {
   return findKey(row, PM_KEYS);
 }
 
-export function classifyStatuses(map: Map<string, number>) {
-  let progress = 0, live = 0, hold = 0, review = 0, design = 0, other = 0, total = 0;
+/**
+ * Bucket a status tally using the canonical classifier.
+ *
+ * Takes the label→count map so callers that already built one (charts, filters)
+ * can reuse it. `total` is the number of rows with a non-empty status, which is
+ * deliberately *not* the same as Total Records — rows with a blank status cell
+ * are real records but belong in no bucket.
+ */
+export function classifyStatuses(map: Map<string, number>): StatusCounts {
+  const out: StatusCounts = {
+    total: 0, progress: 0, live: 0, review: 0, hold: 0, done: 0, notStarted: 0, unknown: 0,
+  };
   for (const [label, value] of map.entries()) {
-    total += value;
-    const s = label.toLowerCase();
-    if (s === 'live' || s.includes('deploy') || s.includes('launched')) live += value;
-    else if (s.includes('hold') || s.includes('pause')) hold += value;
-    else if (s.includes('review') || s.includes('test') || s.includes('qa')) review += value;
-    else if (s.includes('design')) design += value;
-    else if (s.includes('progress') || s.includes('development') || s.includes('ongoing') || s.includes('active')) progress += value;
-    else other += value;
+    const bucket = classifyStatus(label);
+    if (!bucket) continue;
+    out.total += value;
+    out[bucket] += value;
   }
-  return { total, progress, live, hold, review, design, other };
+  return out;
+}
+
+/**
+ * Total project records on the dashboard: rows on project tabs, deduped by uid.
+ *
+ * Counts rows whether or not they carry a status, so it is always >= the sum of
+ * the status buckets. The old version summed `sheet.rows.length` across every
+ * tab, which double-counted the shared workbook and included server/notes tabs.
+ */
+export function countProjectRecords(summaries: PageSummary[]): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const sum of summaries) {
+    if (!sum.data) continue;
+    for (const sheet of sum.data.sheets) {
+      if (NON_PROJECT_SHEETS.has(sheet.name.trim().toLowerCase())) continue;
+      for (const row of sheet.rows) {
+        if (row.hidden) continue;
+        if (row.uid) {
+          if (seen.has(row.uid)) continue;
+          seen.add(row.uid);
+        }
+        count += 1;
+      }
+    }
+  }
+  return count;
 }
