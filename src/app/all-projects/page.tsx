@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
 import {
   ALL_PROJECTS_PAGE_KEY,
   ALL_PROJECTS_STORAGE_KEY,
@@ -9,7 +8,7 @@ import {
   type AllProjectsSheet,
   type SheetRowRecord,
 } from '@/lib/allProjectsTypes';
-import { download } from '@/lib/ui';
+import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
@@ -18,6 +17,7 @@ import { ReorderableHeader } from '@/components/ReorderableHeader';
 import { CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
 import Pagination, { usePagination } from '@/components/Pagination';
+import ExportMenu from '@/components/ExportMenu';
 
 // Rows, edits and deletes all live in the database now (see /api/sheet-rows).
 // There is no local override layer: an edit one person makes is an edit everyone
@@ -284,31 +284,15 @@ export default function AllProjectsPage() {
     }
   };
 
-  const exportData = (format: 'xlsx' | 'csv') => {
-    if (!sheet) return;
-    // Merge the custom-field columns into the exported view.
-    const rows = filteredRows.map(r => {
-      const merged: Record<string, unknown> = { ...r.cells };
-      for (const f of customFields) merged[f.label] = customValues[vkey(f.id, r.uid)] ?? '';
-      return merged;
+  // Export either the tab on screen (current filter applied) or every tab on
+  // the page; see src/lib/sheetExport.ts.
+  const exportData = (format: ExportFormat, scope: ExportScope) =>
+    exportSheetData({
+      format, scope,
+      pageKey: ALL_PROJECTS_PAGE_KEY,
+      fileprefix: 'all-projects',
+      data, sheet, headers, filteredRows, customFields, customValues,
     });
-    // Built from the reordered `headers` so an export matches the screen.
-    const exportHeaders = [...headers, ...customFields.map(f => f.label)];
-    const baseName = `all-projects-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
-    if (format === 'csv') {
-      const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const lines = [exportHeaders.map(esc).join(',')];
-      rows.forEach(r => lines.push(exportHeaders.map(h => esc(r[h])).join(',')));
-      download(`${baseName}.csv`, lines.join('\n'), 'text/csv');
-      return;
-    }
-    const aoa: (string | number | boolean)[][] = [exportHeaders.slice()];
-    rows.forEach(r => aoa.push(exportHeaders.map(h => (r[h] == null ? '' : String(r[h])))));
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
-    XLSX.writeFile(wb, `${baseName}.xlsx`);
-  };
 
   const localTotalRows = useMemo(
     () => data?.sheets.reduce((s, x) => s + x.rows.length, 0) || 0,
@@ -439,19 +423,14 @@ export default function AllProjectsPage() {
                     <div className="text-[10.5px] tabular-nums text-slate-500 whitespace-nowrap">
                       <span className="font-semibold text-slate-700">{filteredRows.length}</span> of {sheet.rows.length}
                     </div>
-                    <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => exportData('xlsx')}
-                        className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
-                        title="Export current view as Excel"
-                      >Export .xlsx</button>
-                      <button
-                        type="button"
-                        onClick={() => exportData('csv')}
-                        className="px-2.5 h-8 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-50"
-                      >CSV</button>
-                    </div>
+                    <ExportMenu
+                      compact
+                      onExport={exportData}
+                      activeSheetName={sheet.name}
+                      sheetCount={data.sheets.length}
+                      filteredCount={filteredRows.length}
+                      totalCount={localTotalRows}
+                    />
                     <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
                   </div>
                 </div>

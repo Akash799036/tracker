@@ -121,7 +121,10 @@ type Props = {
 export default function PMProjectsModal({ pm, onClose }: Props) {
   const [query, setQuery] = useState('');
 
-  const groups = useMemo(() => {
+  // One consolidated list of everything assigned to this PM. Deliberately not
+  // grouped by category — each card still names its category, so the source
+  // stays visible without fragmenting the list.
+  const projects = useMemo(() => {
     if (!pm) return [];
     const q = query.trim().toLowerCase();
     const matched = q
@@ -131,20 +134,16 @@ export default function PMProjectsModal({ pm, onClose }: Props) {
           Object.values(p.cells).some(v => v != null && String(v).toLowerCase().includes(q))
         )
       : pm.projects;
-
-    const byCategory = new Map<string, PMProject[]>();
-    for (const p of matched) {
-      const list = byCategory.get(p.category);
-      if (list) list.push(p); else byCategory.set(p.category, [p]);
-    }
-    return [...byCategory.entries()]
-      .map(([category, projects]) => ({ category, projects }))
-      .sort((a, b) => b.projects.length - a.projects.length || a.category.localeCompare(b.category));
+    // `collectProjectsByPM` sorts by category first, which reads as arbitrary
+    // once the category headings are gone; sort by title instead.
+    return [...matched].sort(
+      (a, b) => a.title.localeCompare(b.title) || a.category.localeCompare(b.category)
+    );
   }, [pm, query]);
 
   if (!pm) return null;
 
-  const shown = groups.reduce((s, g) => s + g.projects.length, 0);
+  const shown = projects.length;
   const color = pmColor(pm.name);
 
   return (
@@ -152,8 +151,7 @@ export default function PMProjectsModal({ pm, onClose }: Props) {
       title={pm.name}
       subtitle={
         <>
-          {pm.total} project{pm.total === 1 ? '' : 's'} across {groups.length || '0'} categor
-          {groups.length === 1 ? 'y' : 'ies'}
+          {pm.total} project{pm.total === 1 ? '' : 's'} assigned
           {query.trim() && <> · {shown} matching</>}
         </>
       }
@@ -177,27 +175,17 @@ export default function PMProjectsModal({ pm, onClose }: Props) {
         </div>
       </div>
 
-      <div className="space-y-4 px-5 py-4">
+      <div className="px-5 py-4">
         {shown === 0 ? (
           <p className="py-10 text-center text-[11.5px] italic text-slate-500">
             No projects match “{query.trim()}”.
           </p>
         ) : (
-          groups.map(g => (
-            <section key={g.category}>
-              <div className="mb-1.5 flex items-baseline justify-between">
-                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                  {g.category}
-                </h4>
-                <span className="text-[10.5px] tabular-nums text-slate-500">{g.projects.length}</span>
-              </div>
-              <div className="space-y-1.5">
-                {g.projects.map(p => (
-                  <ProjectCard key={`${p.href}-${p.uid}`} p={p} />
-                ))}
-              </div>
-            </section>
-          ))
+          <div className="space-y-1.5">
+            {projects.map(p => (
+              <ProjectCard key={`${p.href}-${p.uid}`} p={p} />
+            ))}
+          </div>
         )}
       </div>
     </Modal>
