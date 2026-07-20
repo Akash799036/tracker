@@ -11,7 +11,6 @@ export type DashboardSourceKey =
   | 'live-projects'
   | 'projects'
   | 'priority-list'
-  | 'maintenance'
   | 'marketing';
 
 export type DashboardSource = {
@@ -26,7 +25,6 @@ export const DASHBOARD_SOURCES: DashboardSource[] = [
   { key: 'live-projects', label: 'Live Projects',     href: '/live-projects', storageKey: SHEET_SYNC_STORAGE_KEY('live-projects' as SheetSyncPageKey) },
   { key: 'projects',      label: 'Ongoing Projects',  href: '/projects',      storageKey: SHEET_SYNC_STORAGE_KEY('projects' as SheetSyncPageKey) },
   { key: 'priority-list', label: 'Priority Projects', href: '/priority-list', storageKey: SHEET_SYNC_STORAGE_KEY('priority-list' as SheetSyncPageKey) },
-  { key: 'maintenance',   label: 'Weekly Projects',   href: '/maintenance',   storageKey: SHEET_SYNC_STORAGE_KEY('maintenance' as SheetSyncPageKey) },
   { key: 'marketing',     label: 'Marketing Projects',href: '/marketing',     storageKey: SHEET_SYNC_STORAGE_KEY('marketing' as SheetSyncPageKey) },
 ];
 

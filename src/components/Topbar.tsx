@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 // Pages that render a searchable data panel (SheetSyncPanel).
-const SEARCHABLE_PAGES = ['/projects', '/live-projects', '/maintenance', '/marketing', '/priority-list'];
+const SEARCHABLE_PAGES = ['/projects', '/live-projects', '/marketing', '/priority-list'];
 
 export default function Topbar({ onMenu }: { onMenu: () => void }) {
   const [q, setQ] = useState('');
