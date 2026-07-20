@@ -3,11 +3,16 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { HBars, PALETTE } from '@/components/Charts';
 import {
-  DASHBOARD_SOURCES,
+  CATEGORY_SOURCES,
+  aggregateByCategory,
+  aggregateByPM,
   aggregatePlatform,
   aggregateStatus,
   classifyStatuses,
+  hydrateFromServer,
   readAllSummaries,
+  type CategoryPM,
+  type PMSummary,
   type PageSummary,
 } from '@/lib/dashboardAggregate';
 
@@ -123,6 +128,122 @@ function PageCard({ s, accent }: { s: PageSummary; accent: string }) {
   );
 }
 
+/** Deterministic accent per PM so a person keeps one colour across the page. */
+function pmColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+
+function initials(name: string) {
+  const parts = name.split(' ').filter(Boolean);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+}
+
+function PMAvatar({ name, size = 26 }: { name: string; size?: number }) {
+  const color = pmColor(name);
+  return (
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-full font-bold text-white ring-2 ring-white"
+      style={{ background: color, width: size, height: size, fontSize: size * 0.4 }}
+      title={name}
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+/** One project category (sheet tab) with the PM who owns most of it. */
+function CategoryCard({ cat }: { cat: CategoryPM }) {
+  const others = cat.managers.slice(1);
+  return (
+    <div className="glass rounded-xl p-3.5 ring-1 ring-slate-900/5 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200">
+      <div className="flex items-baseline justify-between gap-2">
+        <Link href={cat.href} className="text-[13px] font-semibold text-slate-900 truncate hover:text-brand-700">
+          {cat.category}
+        </Link>
+        <span className="shrink-0 text-[11px] text-slate-500">
+          <span className="text-[17px] font-bold tabular-nums text-slate-900">{cat.total}</span> projects
+        </span>
+      </div>
+
+      {cat.lead ? (
+        <div className="mt-3 flex items-center gap-2.5">
+          <PMAvatar name={cat.lead.name} size={30} />
+          <div className="min-w-0 flex-1">
+            <div className="text-[12.5px] font-semibold text-slate-900 truncate">{cat.lead.name}</div>
+            <div className="text-[10.5px] text-slate-500">
+              Project Manager · {cat.lead.count} of {cat.total}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 text-[11.5px] italic text-slate-500">No PM assigned</div>
+      )}
+
+      {/* Share-of-category bar, segmented per PM */}
+      {cat.managers.length > 0 && (
+        <div className="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-500/10">
+          {cat.managers.map(m => (
+            <div
+              key={m.name}
+              style={{ width: `${(m.count / cat.total) * 100}%`, background: pmColor(m.name) }}
+              title={`${m.name}: ${m.count}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {(others.length > 0 || cat.unassigned > 0) && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          {others.slice(0, 4).map(m => (
+            <span
+              key={m.name}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+              title={`${m.name}: ${m.count} project${m.count === 1 ? '' : 's'}`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: pmColor(m.name) }} />
+              {m.name} {m.count}
+            </span>
+          ))}
+          {others.length > 4 && (
+            <span className="text-[10px] text-slate-500">+{others.length - 4} more</span>
+          )}
+          {cat.unassigned > 0 && (
+            <span className="inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+              {cat.unassigned} unassigned
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Leaderboard row: one PM, their total, and their category split. */
+function PMRow({ pm, max }: { pm: PMSummary; max: number }) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-colors">
+      <PMAvatar name={pm.name} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[12px] font-semibold text-slate-900 truncate">{pm.name}</span>
+          <span className="shrink-0 text-[12px] font-bold tabular-nums text-slate-900">{pm.total}</span>
+        </div>
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-500/10">
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${(pm.total / max) * 100}%`, background: pmColor(pm.name) }}
+          />
+        </div>
+        <div className="mt-1 truncate text-[10px] text-slate-500">
+          {pm.categories.map(c => `${c.category} ${c.count}`).join(' · ')}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* --- Icons --- */
 const IconLayers = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
@@ -142,14 +263,22 @@ const IconPause = (
 
 export default function Dashboard() {
   const [summaries, setSummaries] = useState<PageSummary[]>([]);
+  // Categories draw on one extra workbook that has no page of its own.
+  const [categorySummaries, setCategorySummaries] = useState<PageSummary[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const refresh = () => setSummaries(readAllSummaries());
+    const refresh = () => {
+      setSummaries(readAllSummaries());
+      setCategorySummaries(readAllSummaries(CATEGORY_SOURCES));
+    };
     refresh();
     setReady(true);
+    // Pull straight from the database so the dashboard is populated on first
+    // visit rather than only after the user has opened every other page.
+    hydrateFromServer().then(refresh);
 
-    const watchedKeys = new Set(DASHBOARD_SOURCES.map(s => s.storageKey));
+    const watchedKeys = new Set(CATEGORY_SOURCES.map(s => s.storageKey));
     const onStorage = (e: StorageEvent) => {
       if (!e.key || watchedKeys.has(e.key)) refresh();
     };
@@ -172,6 +301,10 @@ export default function Dashboard() {
   const statusMap = useMemo(() => aggregateStatus(summaries), [summaries]);
   const platformMap = useMemo(() => aggregatePlatform(summaries), [summaries]);
   const buckets = useMemo(() => classifyStatuses(statusMap), [statusMap]);
+
+  const categories = useMemo(() => aggregateByCategory(categorySummaries), [categorySummaries]);
+  const pmSummaries = useMemo(() => aggregateByPM(categories), [categories]);
+  const pmMax = pmSummaries[0]?.total ?? 0;
 
   const totalRows = useMemo(() => summaries.reduce((s, x) => s + x.totalRows, 0), [summaries]);
   const syncedPages = summaries.filter(s => s.syncedAt).length;
@@ -252,6 +385,49 @@ export default function Dashboard() {
         <StatCard label="Live"          value={buckets.live}     sub="deployed / launched"       tone="emerald" icon={IconCheck} />
         <StatCard label="Review / QA"   value={buckets.review}                                    tone="violet"  icon={IconEye} />
         <StatCard label="On hold"       value={buckets.hold}                                      tone="amber"   icon={IconPause} />
+      </div>
+
+      {/* Projects by category + PM — the primary view */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <section className="glass rounded-2xl p-4 lg:col-span-8">
+          <div className="flex items-baseline justify-between mb-3">
+            <div>
+              <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Projects by category</h2>
+              <p className="mt-0.5 text-[10.5px] text-slate-500">Assigned Project Manager and project count per category</p>
+            </div>
+            <span className="text-[10.5px] text-slate-500">{categories.length} categories</span>
+          </div>
+          {categories.length === 0 ? (
+            <div className="py-10 text-center text-[11.5px] italic text-slate-500">
+              No project-manager data found yet
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+              {categories.map(cat => (
+                <CategoryCard key={`${cat.sourceLabel}:${cat.category}`} cat={cat} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="glass rounded-2xl p-4 lg:col-span-4">
+          <div className="flex items-baseline justify-between mb-3">
+            <div>
+              <h2 className="text-[13px] font-semibold text-slate-900 tracking-tight">Project Managers</h2>
+              <p className="mt-0.5 text-[10.5px] text-slate-500">Total projects managed</p>
+            </div>
+            <span className="text-[10.5px] text-slate-500">{pmSummaries.length}</span>
+          </div>
+          {pmSummaries.length === 0 ? (
+            <div className="py-10 text-center text-[11.5px] italic text-slate-500">No PM data yet</div>
+          ) : (
+            <div className="space-y-0.5 max-h-[420px] overflow-y-auto pr-1">
+              {pmSummaries.map(pm => (
+                <PMRow key={pm.name} pm={pm} max={pmMax} />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
       {/* Main grid */}

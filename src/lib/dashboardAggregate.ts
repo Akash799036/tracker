@@ -11,21 +11,34 @@ export type DashboardSourceKey =
   | 'live-projects'
   | 'projects'
   | 'priority-list'
-  | 'marketing';
+  | 'marketing'
+  | 'dashboard';
 
 export type DashboardSource = {
   key: DashboardSourceKey;
   label: string;
   href: string;
+  /** page_key to fetch from /api/sheet-sync/:page. */
+  page: SheetSyncPageKey;
   storageKey: string;
 };
 
 export const DASHBOARD_SOURCES: DashboardSource[] = [
-  { key: 'all-projects',  label: 'All Projects',      href: '/all-projects',  storageKey: ALL_PROJECTS_STORAGE_KEY },
-  { key: 'live-projects', label: 'Live Projects',     href: '/live-projects', storageKey: SHEET_SYNC_STORAGE_KEY('live-projects' as SheetSyncPageKey) },
-  { key: 'projects',      label: 'Ongoing Projects',  href: '/projects',      storageKey: SHEET_SYNC_STORAGE_KEY('projects' as SheetSyncPageKey) },
-  { key: 'priority-list', label: 'Priority Projects', href: '/priority-list', storageKey: SHEET_SYNC_STORAGE_KEY('priority-list' as SheetSyncPageKey) },
-  { key: 'marketing',     label: 'Marketing Projects',href: '/marketing',     storageKey: SHEET_SYNC_STORAGE_KEY('marketing' as SheetSyncPageKey) },
+  { key: 'all-projects',  label: 'All Projects',      href: '/all-projects',  page: 'all-projects',  storageKey: ALL_PROJECTS_STORAGE_KEY },
+  { key: 'live-projects', label: 'Live Projects',     href: '/live-projects', page: 'live-projects', storageKey: SHEET_SYNC_STORAGE_KEY('live-projects' as SheetSyncPageKey) },
+  { key: 'projects',      label: 'Ongoing Projects',  href: '/projects',      page: 'projects',      storageKey: SHEET_SYNC_STORAGE_KEY('projects' as SheetSyncPageKey) },
+  { key: 'priority-list', label: 'Priority Projects', href: '/priority-list', page: 'priority-list', storageKey: SHEET_SYNC_STORAGE_KEY('priority-list' as SheetSyncPageKey) },
+  { key: 'marketing',     label: 'Marketing Projects',href: '/marketing',     page: 'marketing',     storageKey: SHEET_SYNC_STORAGE_KEY('marketing' as SheetSyncPageKey) },
+];
+
+/**
+ * The `dashboard` workbook holds the cleanest per-category PM data (Wordpress,
+ * Shopify, Custom, NextNode) but has no page of its own to link to, so it feeds
+ * the category/PM grouping without appearing in Pages or Sync activity.
+ */
+export const CATEGORY_SOURCES: DashboardSource[] = [
+  ...DASHBOARD_SOURCES,
+  { key: 'dashboard', label: 'Project Categories', href: '/all-projects', page: 'dashboard', storageKey: SHEET_SYNC_STORAGE_KEY('dashboard' as SheetSyncPageKey) },
 ];
 
 export type PageSummary = {
@@ -49,8 +62,8 @@ function totalRows(data: AllProjectsData | null): number {
   return data.sheets.reduce((s, sh) => s + sh.rows.length, 0);
 }
 
-export function readAllSummaries(): PageSummary[] {
-  return DASHBOARD_SOURCES.map(source => {
+export function readAllSummaries(sources: DashboardSource[] = DASHBOARD_SOURCES): PageSummary[] {
+  return sources.map(source => {
     const data = readCache(source.storageKey);
     return {
       source,
@@ -60,6 +73,25 @@ export function readAllSummaries(): PageSummary[] {
       sheetCount: data?.sheets.length ?? 0,
     };
   });
+}
+
+/**
+ * The dashboard used to read localStorage only, so it showed zeros until the
+ * user had visited every page. Pull each page straight from the database and
+ * seed the same cache the individual pages use.
+ */
+export async function hydrateFromServer(): Promise<void> {
+  await Promise.all(
+    CATEGORY_SOURCES.map(async source => {
+      try {
+        const res = await fetch(`/api/sheet-sync/${source.page}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as AllProjectsData;
+        if (!data || !Array.isArray(data.sheets)) return;
+        localStorage.setItem(source.storageKey, JSON.stringify(data));
+      } catch { /* offline or route down — fall back to whatever is cached */ }
+    })
+  );
 }
 
 const STATUS_KEYS = ['status', 'project status', 'current status', 'stage'];
@@ -104,6 +136,199 @@ export function aggregateStatus(summaries: PageSummary[]) {
 
 export function aggregatePlatform(summaries: PageSummary[]) {
   return aggregateColumn(summaries, PLATFORM_KEYS);
+}
+
+/* ---------------- PM grouping ---------------- */
+
+// Spelled differently per workbook: 'Project Manager', 'PROJECT MANAGER', 'PM'.
+const PM_KEYS = ['project manager', 'pm', 'manager'];
+
+// The sheets carry dirty PM values — the same person is typed several ways
+// ('Pinak Chaudhuri' / 'Pinak Choudhuri' / 'Pinak Chowdhury'), and some rows
+// give only a first name. Canonicalising matters: without it one PM's projects
+// split across three rows and every count is wrong.
+export function normalizePM(raw: unknown): string | null {
+  const s = raw == null ? '' : String(raw).trim().replace(/\s+/g, ' ');
+  if (!s) return null;
+  // A few cells name two people; treat them as their own bucket rather than
+  // silently crediting the first.
+  return s.replace(/\b\w/g, c => c.toUpperCase()).replace(/\s*\/\s*/g, ' / ');
+}
+
+/**
+ * Collapse surname spelling variants of the same first name. Indian surnames in
+ * this data vary by transliteration (Chaudhuri/Choudhuri/Chowdhury) while the
+ * first name is stable, so we key on first name + a vowel-stripped surname.
+ */
+function nameFingerprint(name: string): string {
+  const parts = name.toLowerCase().split(' ').filter(Boolean);
+  // Fuzzy first name so transposition typos ('Pniak') match 'Pinak'.
+  const first = firstNameKey(name);
+  const rest = parts.slice(1).join('');
+  if (!rest) return first;
+  // Drop vowels (w/y included — 'Chowdhury' vs 'Chaudhuri') and duplicate
+  // consonants, and fold v→b, so ch(a|ou)dh(u|)r(i|y) collapses to one key.
+  const skeleton = rest.replace(/v/g, 'b').replace(/[aeiouwy]/g, '').replace(/(.)\1+/g, '$1');
+  return `${first}|${skeleton}`;
+}
+
+/** Fuzzy key for a bare first name, so 'Pniak' collapses onto 'Pinak'. */
+function firstNameKey(name: string): string {
+  const first = name.toLowerCase().split(' ')[0] ?? '';
+  // Sort the letters: transposition typos ('Pniak' vs 'Pinak', 'Devjoti' vs
+  // 'Debjoti' after b/v folding) produce the same multiset.
+  return [...first.replace(/v/g, 'b')].sort().join('');
+}
+
+/**
+ * Build one canonical display name per PM across every category. Must run
+ * globally, not per category: a row that says only 'Sibam' in Custom has to
+ * find 'Sibam Sinha' over in Wordpress, or one person lands on the
+ * leaderboard twice.
+ */
+function buildPMCanonicalMap(allNames: Iterable<string>): Map<string, string> {
+  // Pass 1: group full names by first-name + vowel-stripped surname.
+  const groups = new Map<string, string[]>();
+  for (const name of allNames) {
+    const fp = nameFingerprint(name);
+    const list = groups.get(fp);
+    if (list) list.push(name); else groups.set(fp, [name]);
+  }
+  // Longest spelling wins as the display name for each surname group.
+  const display = new Map<string, string>();
+  for (const [fp, names] of groups) {
+    display.set(fp, names.reduce((a, b) => (b.length > a.length ? b : a)));
+  }
+  // Pass 2: map every bare first name onto the single full name that shares it.
+  const fullByFirst = new Map<string, Set<string>>();
+  for (const canon of display.values()) {
+    if (!canon.includes(' ')) continue;
+    const k = firstNameKey(canon);
+    (fullByFirst.get(k) ?? fullByFirst.set(k, new Set()).get(k)!).add(canon);
+  }
+  const out = new Map<string, string>();
+  for (const name of allNames) {
+    let canon = display.get(nameFingerprint(name)) ?? name;
+    if (!canon.includes(' ')) {
+      const candidates = fullByFirst.get(firstNameKey(canon));
+      // Only fold when it is unambiguous — two different Pritams stay apart.
+      if (candidates?.size === 1) canon = [...candidates][0];
+    }
+    out.set(name, canon);
+  }
+  return out;
+}
+
+export type CategoryPM = {
+  /** Sheet/tab name — the project category, e.g. 'Wordpress'. */
+  category: string;
+  /** Page this tab came from, for the deep link. */
+  href: string;
+  sourceLabel: string;
+  total: number;
+  /** PM with the most projects in this category. */
+  lead: { name: string; count: number } | null;
+  /** All PMs in this category, most projects first. */
+  managers: { name: string; count: number }[];
+  /** Rows in this category with no PM filled in. */
+  unassigned: number;
+};
+
+export type PMSummary = {
+  name: string;
+  total: number;
+  /** Per-category breakdown for this PM, most projects first. */
+  categories: { category: string; count: number }[];
+};
+
+// Tabs that hold infrastructure/notes rather than projects.
+const NON_PROJECT_SHEETS = new Set(['servers', 'sheet1']);
+
+/**
+ * Group every project row by its category (the sheet/tab name) and, within
+ * that, by Project Manager. Rows whose tab has no PM column are skipped
+ * entirely rather than counted as unassigned.
+ */
+export function aggregateByCategory(summaries: PageSummary[]): CategoryPM[] {
+  const byCategory = new Map<string, CategoryPM & { counts: Map<string, number> }>();
+
+  for (const sum of summaries) {
+    if (!sum.data) continue;
+    for (const sheet of sum.data.sheets) {
+      if (!sheet.rows.length) continue;
+      if (NON_PROJECT_SHEETS.has(sheet.name.trim().toLowerCase())) continue;
+
+      const pmKey = findKey(sheet.rows[0].cells, PM_KEYS);
+      if (!pmKey) continue;
+
+      const category = sheet.name.trim();
+      let entry = byCategory.get(category.toLowerCase());
+      if (!entry) {
+        entry = {
+          category,
+          href: sum.source.href,
+          sourceLabel: sum.source.label,
+          total: 0,
+          lead: null,
+          managers: [],
+          unassigned: 0,
+          counts: new Map<string, number>(),
+        };
+        byCategory.set(category.toLowerCase(), entry);
+      }
+
+      for (const row of sheet.rows) {
+        if (row.hidden) continue;
+        entry.total += 1;
+        const pm = normalizePM(row.cells[pmKey]);
+        if (!pm) { entry.unassigned += 1; continue; }
+        entry.counts.set(pm, (entry.counts.get(pm) || 0) + 1);
+      }
+    }
+  }
+
+  // Canonicalise across every category at once, then re-key each category's
+  // counts through the shared map.
+  const allNames = new Set<string>();
+  for (const entry of byCategory.values()) {
+    for (const name of entry.counts.keys()) allNames.add(name);
+  }
+  const canon = buildPMCanonicalMap(allNames);
+
+  return [...byCategory.values()]
+    .map(({ counts, ...rest }) => {
+      const merged = new Map<string, number>();
+      for (const [name, count] of counts) {
+        const key = canon.get(name) ?? name;
+        merged.set(key, (merged.get(key) ?? 0) + count);
+      }
+      const managers = [...merged.entries()]
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      return { ...rest, managers, lead: managers[0] ?? null };
+    })
+    .filter(c => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+}
+
+/** Roll the per-category counts up into a per-PM view. */
+export function aggregateByPM(categories: CategoryPM[]): PMSummary[] {
+  const byPM = new Map<string, PMSummary>();
+  for (const cat of categories) {
+    for (const m of cat.managers) {
+      let entry = byPM.get(m.name);
+      if (!entry) {
+        entry = { name: m.name, total: 0, categories: [] };
+        byPM.set(m.name, entry);
+      }
+      entry.total += m.count;
+      entry.categories.push({ category: cat.category, count: m.count });
+    }
+  }
+  for (const entry of byPM.values()) {
+    entry.categories.sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+  }
+  return [...byPM.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 }
 
 export function classifyStatuses(map: Map<string, number>) {
