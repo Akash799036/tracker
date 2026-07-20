@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import * as XLSX from 'xlsx';
 import {
   SHEET_SYNC_STORAGE_KEY,
   type AllProjectsData,
@@ -10,7 +9,7 @@ import {
   type SheetRowRecord,
   type SheetSyncPageKey,
 } from '@/lib/sheetSync';
-import { download } from '@/lib/ui';
+import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
@@ -18,6 +17,7 @@ import { ReorderableHeader } from './ReorderableHeader';
 import { CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from './AddRowForm';
 import Pagination, { usePagination } from './Pagination';
+import ExportMenu from './ExportMenu';
 
 // Rows, edits and deletes all live in the database now (see /api/sheet-rows).
 // There is no local override layer: an edit one person makes is an edit everyone
@@ -251,36 +251,18 @@ export default function SheetSyncPanel({
     }
   };
 
-  const exportData = (format: 'xlsx' | 'csv') => {
-    if (!sheet) return;
-    // Merge the custom-field columns into the exported view. Built from the
-    // reordered `headers`, not the raw sheet order, so an export matches the
-    // column order on screen.
-    const exportHeaders = [...headers, ...customFields.map(f => f.label)];
-    const rows = filteredRows.map(r => {
-      const merged: Record<string, unknown> = { ...r.cells };
-      for (const f of customFields) merged[f.label] = customValues[vkey(f.id, r.uid)] ?? '';
-      return merged;
+  // Export either the tab on screen (current filter applied) or every tab on
+  // the page; see src/lib/sheetExport.ts.
+  const exportData = (format: ExportFormat, scope: ExportScope) =>
+    exportSheetData({
+      format, scope, pageKey, data, sheet, headers, filteredRows, customFields, customValues,
     });
-    const baseName = `${pageKey}-${sheet.name}`.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
-    if (format === 'csv') {
-      const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const lines = [exportHeaders.map(esc).join(',')];
-      rows.forEach(r => lines.push(exportHeaders.map(h => esc(r[h])).join(',')));
-      download(`${baseName}.csv`, lines.join('\n'), 'text/csv');
-      return;
-    }
-    const aoa: (string | number | boolean)[][] = [exportHeaders.slice()];
-    rows.forEach(r => aoa.push(exportHeaders.map(h => (r[h] == null ? '' : String(r[h])))));
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
-    XLSX.writeFile(wb, `${baseName}.xlsx`);
-  };
 
   if (!ready) return null;
 
   const totalRows = sheet?.rows.length ?? 0;
+  // Rows across every tab — shown against the whole-page export option.
+  const pageTotalRows = data?.sheets.reduce((n, s) => n + s.rows.length, 0) ?? 0;
 
   return (
     <section className="space-y-3 bg-white rounded-xl border border-slate-200 shadow-card p-4">
@@ -349,20 +331,13 @@ export default function SheetSyncPanel({
                   <div className="text-xs text-slate-500 whitespace-nowrap">
                     {filteredRows.length} of {totalRows} rows
                   </div>
-                  <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => exportData('xlsx')}
-                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border-r border-slate-200"
-                      title="Export current view as Excel"
-                    >Export .xlsx</button>
-                    <button
-                      type="button"
-                      onClick={() => exportData('csv')}
-                      className="px-2.5 h-8 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50"
-                      title="Export current view as CSV"
-                    >CSV</button>
-                  </div>
+                  <ExportMenu
+                    onExport={exportData}
+                    activeSheetName={sheet.name}
+                    sheetCount={data.sheets.length}
+                    filteredCount={filteredRows.length}
+                    totalCount={pageTotalRows}
+                  />
                   <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
                 </div>
               </div>
