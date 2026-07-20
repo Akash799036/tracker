@@ -8,7 +8,6 @@ const NAV = [
   { href: '/live-projects', label: 'Live Projects' },
   { href: '/projects', label: 'Ongoing Projects' },
   { href: '/priority-list', label: 'Priority Projects' },
-  { href: '/maintenance', label: 'Weekly Projects' },
   { href: '/marketing', label: 'Marketing Projects' },
 ];
 

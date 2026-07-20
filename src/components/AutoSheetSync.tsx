@@ -8,7 +8,6 @@ const PAGE_KEYS: SheetSyncPageKey[] = [
   'projects',
   'live-projects',
   'priority-list',
-  'maintenance',
   'marketing',
   'dashboard',
 ];

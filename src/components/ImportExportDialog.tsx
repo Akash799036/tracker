@@ -12,7 +12,6 @@ type Category =
   | 'live'
   | 'ongoing'
   | 'priority'
-  | 'weekly'
   | 'marketing';
 type Format = 'xlsx' | 'csv' | 'pdf';
 
@@ -21,7 +20,6 @@ const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'live', label: 'Live Projects' },
   { value: 'ongoing', label: 'Ongoing Projects' },
   { value: 'priority', label: 'Priority Projects' },
-  { value: 'weekly', label: 'Weekly Projects' },
   { value: 'marketing', label: 'Marketing Projects' },
 ];
 
@@ -56,13 +54,6 @@ function filterByCategory(projects: Project[], cat: Category): Project[] {
           if (!isNaN(t) && t >= now && t <= in14) return true;
         }
         return /review|testing|development|design/i.test(p.status || '');
-      });
-    }
-    case 'weekly': {
-      const in7 = now + 7 * 86400_000;
-      return projects.filter(p => {
-        const t = p.liveDate ? new Date(p.liveDate).getTime() : NaN;
-        return !isNaN(t) && t >= now && t <= in7;
       });
     }
     case 'marketing':
