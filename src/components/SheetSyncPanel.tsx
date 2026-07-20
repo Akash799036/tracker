@@ -15,7 +15,7 @@ import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { ReorderableHeader } from './ReorderableHeader';
 import { useRowExtras } from '@/lib/useRowExtras';
-import { AddFieldButton, CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
+import { CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from './AddRowForm';
 import { RowExtrasCell } from './RowExtrasControls';
 
@@ -62,9 +62,7 @@ export default function SheetSyncPanel({
   const {
     fields: customFields,
     values: customValues,
-    busy: customBusy,
     error: customError,
-    addField: addCustomField,
     deleteField: deleteCustomField,
     setValue: saveCustomValue,
     reorderFields: reorderCustomFields,
@@ -380,7 +378,6 @@ export default function SheetSyncPanel({
                       title="Export current view as CSV"
                     >CSV</button>
                   </div>
-                  <AddFieldButton onAdd={addCustomField} busy={customBusy} />
                   <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
                 </div>
               </div>

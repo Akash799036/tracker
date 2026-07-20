@@ -1,73 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import type { CustomField } from '@/lib/useCustomFields';
 import { ReorderableHeader } from './ReorderableHeader';
 
 // Shared UI for the database-backed custom fields, so every table that renders
 // extra columns gets the same toolbar control, header chip and cell editor.
-
-/** Toolbar button that expands into a "name your field" inline form. */
-export function AddFieldButton({
-  onAdd,
-  busy,
-  disabled,
-}: {
-  onAdd: (label: string) => Promise<boolean> | boolean;
-  busy?: boolean;
-  disabled?: boolean;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [label, setLabel] = useState('');
-
-  const close = () => { setAdding(false); setLabel(''); };
-  const submit = async () => {
-    const ok = await onAdd(label);
-    if (ok) close();
-  };
-
-  if (!adding) {
-    return (
-      <button
-        type="button"
-        onClick={() => setAdding(true)}
-        disabled={disabled}
-        className="h-8 px-2.5 inline-flex items-center gap-1 rounded-lg border border-dashed border-indigo-300 text-xs font-semibold text-indigo-700 bg-indigo-50/50 hover:bg-indigo-50 disabled:opacity-50"
-        title="Add a new field (column) to this sheet"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Field
-      </button>
-    );
-  }
-
-  return (
-    <div className="inline-flex items-center gap-1.5">
-      <input
-        autoFocus
-        value={label}
-        onChange={e => setLabel(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter') submit();
-          if (e.key === 'Escape') close();
-        }}
-        placeholder="Field name…"
-        className="h-8 w-40 px-2 rounded-lg border border-slate-300 text-xs"
-      />
-      <button
-        type="button"
-        onClick={submit}
-        disabled={busy || !label.trim()}
-        className="h-8 px-2.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
-      >{busy ? 'Adding…' : 'Add'}</button>
-      <button
-        type="button"
-        onClick={close}
-        className="h-8 px-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50"
-      >Cancel</button>
-    </div>
-  );
-}
 
 /** Header cell for one custom field: draggable, with inline move and delete. */
 export function CustomFieldHeader({
