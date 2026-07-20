@@ -10,6 +10,7 @@ import {
   aggregateStatus,
   classifyStatuses,
   collectProjectsByPM,
+  countProjectRecords,
   hydrateFromServer,
   readAllSummaries,
   type PMSummary,
@@ -235,8 +236,11 @@ export default function Dashboard() {
     return times.length ? Math.max(...times) : null;
   }, [summaries]);
 
-  const statusMap = useMemo(() => aggregateStatus(summaries), [summaries]);
-  const platformMap = useMemo(() => aggregatePlatform(summaries), [summaries]);
+  // Status KPIs read CATEGORY_SOURCES, not DASHBOARD_SOURCES: the project rows
+  // live in the 'dashboard' workbook, which DASHBOARD_SOURCES omits because it
+  // has no page to link to. Reading the narrower set missed every project row.
+  const statusMap = useMemo(() => aggregateStatus(categorySummaries), [categorySummaries]);
+  const platformMap = useMemo(() => aggregatePlatform(categorySummaries), [categorySummaries]);
   const buckets = useMemo(() => classifyStatuses(statusMap), [statusMap]);
 
   const categories = useMemo(() => aggregateByCategory(categorySummaries), [categorySummaries]);
@@ -250,7 +254,9 @@ export default function Dashboard() {
   // showing fresh rows as the 5s refresh replaces the data underneath it.
   const activePM = openPM ? pmProjects.get(openPM) ?? null : null;
 
-  const totalRows = useMemo(() => summaries.reduce((s, x) => s + x.totalRows, 0), [summaries]);
+  // Deduped count of real project rows — not a raw sum of every tab's length,
+  // which double-counted the shared workbook and included server/notes tabs.
+  const totalRows = useMemo(() => countProjectRecords(categorySummaries), [categorySummaries]);
   const syncedPages = summaries.filter(s => s.syncedAt).length;
 
   const platformData = useMemo(
@@ -261,16 +267,21 @@ export default function Dashboard() {
     [platformMap]
   );
 
-  // Compact bucket-based status distribution (top items only)
+  // Compact bucket-based status distribution. Every bucket is listed, including
+  // the leftovers, so the chart accounts for all statused rows rather than
+  // quietly dropping the ones no card shows.
   const statusBuckets = useMemo(() => ([
-    { label: 'In progress', value: buckets.progress, color: '#2748e0' },
-    { label: 'Live',        value: buckets.live,     color: '#059669' },
-    { label: 'Review / QA', value: buckets.review,   color: '#0891b2' },
-    { label: 'Design',      value: buckets.design,   color: '#7c3aed' },
-    { label: 'On hold',     value: buckets.hold,     color: '#d97706' },
-  ]), [buckets]);
+    { label: 'In progress', value: buckets.progress,   color: '#2748e0' },
+    { label: 'Live',        value: buckets.live,       color: '#059669' },
+    { label: 'Review / QA', value: buckets.review,     color: '#0891b2' },
+    { label: 'On hold',     value: buckets.hold,       color: '#d97706' },
+    { label: 'Done',        value: buckets.done,       color: '#0f766e' },
+    { label: 'Not started', value: buckets.notStarted, color: '#64748b' },
+    { label: 'Unclassified',value: buckets.unknown,    color: '#94a3b8' },
+  ].filter(b => b.value > 0)), [buckets]);
 
-  const statusTotal = buckets.progress + buckets.live + buckets.review + buckets.design + buckets.hold;
+  // Equals buckets.total by construction — every statused row is in one bucket.
+  const statusTotal = buckets.total;
 
   if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
 
@@ -324,11 +335,11 @@ export default function Dashboard() {
 
       {/* KPI grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-        <StatCard label="Total records" value={totalRows} sub={`across ${summaries.length} pages`} tone="brand"   icon={IconLayers} />
-        <StatCard label="In progress"   value={buckets.progress} sub="active development"        tone="sky"     icon={IconPlay} />
-        <StatCard label="Live"          value={buckets.live}     sub="deployed / launched"       tone="emerald" icon={IconCheck} />
-        <StatCard label="Review / QA"   value={buckets.review}                                    tone="violet"  icon={IconEye} />
-        <StatCard label="On hold"       value={buckets.hold}                                      tone="amber"   icon={IconPause} />
+        <StatCard label="Total records" value={totalRows}        sub={`${buckets.total} with a status`} tone="brand"   icon={IconLayers} />
+        <StatCard label="In progress"   value={buckets.progress} sub="active development"               tone="sky"     icon={IconPlay} />
+        <StatCard label="Live"          value={buckets.live}     sub="live / delivered"                 tone="emerald" icon={IconCheck} />
+        <StatCard label="Review / QA"   value={buckets.review}   sub="testing / review"                 tone="violet"  icon={IconEye} />
+        <StatCard label="On hold"       value={buckets.hold}     sub="paused / blocked"                 tone="amber"   icon={IconPause} />
       </div>
 
       {/* Project managers */}
