@@ -69,7 +69,7 @@ function ProjectCard({ p }: { p: PMProject }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12.5px] font-semibold text-slate-900">{p.title}</span>
           <span className="mt-0.5 block truncate text-[10.5px] text-slate-500">
-            {p.category} · {p.sourceLabel}
+            {p.sources.map(s => `${s.category} · ${s.sourceLabel}`).join('  •  ')}
           </span>
         </span>
         {status && <span className={`${statusPillClass(status)} shrink-0`}>{status}</span>}
@@ -102,10 +102,18 @@ function ProjectCard({ p }: { p: PMProject }) {
               ))}
             </dl>
           )}
-          <div className="mt-2.5 text-right">
-            <Link href={p.href} className="text-[11px] font-semibold text-brand-600 hover:text-brand-700">
-              Open in {p.sourceLabel} →
-            </Link>
+          {/* One link per tab this project lives on, so a merged card still
+              reaches every place the row exists. */}
+          <div className="mt-2.5 flex flex-wrap justify-end gap-x-3 gap-y-1">
+            {p.sources.map(s => (
+              <Link
+                key={`${s.href}-${s.category}`}
+                href={s.href}
+                className="text-[11px] font-semibold text-brand-600 hover:text-brand-700"
+              >
+                Open in {s.sourceLabel} →
+              </Link>
+            ))}
           </div>
         </div>
       )}
@@ -183,7 +191,7 @@ export default function PMProjectsModal({ pm, onClose }: Props) {
         ) : (
           <div className="space-y-1.5">
             {projects.map(p => (
-              <ProjectCard key={`${p.href}-${p.uid}`} p={p} />
+              <ProjectCard key={p.uid} p={p} />
             ))}
           </div>
         )}

@@ -13,6 +13,7 @@ import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
+import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
 import { CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
@@ -68,7 +69,8 @@ export default function AllProjectsPage() {
   const [addingRow, setAddingRow] = useState(false);
   const [rowBusy, setRowBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // Also makes a plain mouse wheel scroll the sheet sideways.
+  const { ref: scrollRef, scrollBy } = useHorizontalScroll<HTMLDivElement>();
 
   // Database-backed custom fields (extra columns) for the active sheet.
   const {
@@ -79,8 +81,6 @@ export default function AllProjectsPage() {
     setValue: saveCustomValue,
     reorderFields: reorderCustomFields,
   } = useCustomFields(ALL_PROJECTS_PAGE_KEY, activeSheet);
-
-  const scrollBy = (dx: number) => scrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' });
 
   /** Pull the authoritative rows back after a mutation. */
   const refresh = useCallback(async () => {
@@ -373,7 +373,11 @@ export default function AllProjectsPage() {
         </div>
       ) : (
         <>
-          <section className="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden">
+          {/* overflow-clip, not overflow-hidden: both keep the table's corners
+              inside the rounded card, but overflow-hidden makes this a scroll
+              container, which pins the toolbar's sticky position to this card
+              instead of the viewport and stops it sticking at all. */}
+          <section className="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-clip">
             <div className="flex flex-wrap gap-1 border-b border-slate-100 bg-gradient-to-b from-slate-50/60 to-white px-2 pt-2">
               {data.sheets.map(s => (
                 <button
@@ -393,7 +397,11 @@ export default function AllProjectsPage() {
 
             {sheet && (
               <>
-                <div className="p-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                {/* Sticky so search + scroll arrows stay reachable while the
+                    sheet scrolls. top-16 clears the h-16 Topbar; z-10 keeps it
+                    under that bar's z-20. Needs an opaque bg or rows show
+                    through as they pass beneath. */}
+                <div className="sticky top-16 z-10 bg-white p-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                     <input
