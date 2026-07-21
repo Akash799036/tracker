@@ -16,7 +16,8 @@ import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from './ReorderableHeader';
-import { CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
+import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
+import { SheetCell } from './SheetCell';
 import { AddRowButton, AddRowFormRow } from './AddRowForm';
 import Pagination, { usePagination } from './Pagination';
 import ExportMenu from './ExportMenu';
@@ -66,6 +67,7 @@ export default function SheetSyncPanel({
     fields: customFields,
     values: customValues,
     error: customError,
+    addField: addCustomField,
     deleteField: deleteCustomField,
     setValue: saveCustomValue,
     reorderFields: reorderCustomFields,
@@ -206,6 +208,28 @@ export default function SheetSyncPanel({
     }
   };
 
+  // Save a single cell (one header of one row) from click-to-edit. Unlike
+  // saveEdit this never enters a whole-row edit mode; it PATCHes just the one
+  // value and refreshes.
+  const saveCell = async (row: SheetRowRecord, header: string, next: string) => {
+    if (toStr(row.cells[header]) === next) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/sheet-rows/${pageKey}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowUid: row.uid, cells: { [header]: next } }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error || 'could not save that change');
+      }
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'could not save that change');
+    }
+  };
+
   const addRow = async (cells: Record<string, string>) => {
     if (!sheet) return false;
     setRowBusy(true);
@@ -232,11 +256,11 @@ export default function SheetSyncPanel({
   const deleteRow = async (row: SheetRowRecord) => {
     const isUser = row.origin === 'user';
     const ok = await confirm({
-      title: isUser ? 'Delete this row?' : 'Hide this row?',
+      title: 'Delete this row?',
       message: isUser
         ? 'This removes it for everyone, along with any fields on it.'
-        : 'It came from the source sheet, so it will stay hidden until you restore it.',
-      confirmLabel: isUser ? 'Delete' : 'Hide',
+        : 'It came from the source sheet, so it will stay removed until you restore it.',
+      confirmLabel: 'Delete',
       tone: 'danger',
     });
     if (!ok) return;
@@ -350,6 +374,7 @@ export default function SheetSyncPanel({
                     totalCount={pageTotalRows}
                   />
                   <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
+                  <AddColumnButton onAdd={addCustomField} disabled={rowBusy} />
                 </div>
               </div>
 
@@ -391,18 +416,28 @@ export default function SheetSyncPanel({
                         <tr key={row.uid} className="odd:bg-white even:bg-slate-50/40 hover:bg-indigo-50/40">
                           {headers.map(h => {
                             const v = row.cells[h];
-                            return (
-                              <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate">
-                                {isEditing ? (
+                            if (isEditing) {
+                              return (
+                                <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate">
                                   <input
                                     value={editDraft[h] ?? ''}
                                     onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
                                     className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm"
                                   />
-                                ) : looksLikeUrl(v)
-                                  ? <a href={v} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline break-all">{v}</a>
+                                </td>
+                              );
+                            }
+                            return (
+                              <SheetCell
+                                key={h}
+                                value={toStr(v)}
+                                onSave={next => saveCell(row, h, next)}
+                                className="border-b border-slate-100"
+                              >
+                                {looksLikeUrl(v)
+                                  ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-indigo-600 hover:underline break-all">{v}</a>
                                   : renderPMCell(h, v, toStr(v))}
-                              </td>
+                              </SheetCell>
                             );
                           })}
                           {customFields.map(f => (
@@ -428,7 +463,7 @@ export default function SheetSyncPanel({
                                   className="text-indigo-600 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
                                 <button onClick={() => deleteRow(row)}
                                   className="text-rose-600 hover:text-rose-700 text-xs font-medium">
-                                  {row.origin === 'user' ? 'Delete' : 'Hide'}
+                                  Delete
                                 </button>
                               </>
                             )}

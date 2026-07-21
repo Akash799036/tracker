@@ -15,7 +15,8 @@ import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
-import { CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
+import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
+import { SheetCell } from '@/components/SheetCell';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
 import { useConfirm } from '@/lib/confirm';
 import Pagination, { usePagination } from '@/components/Pagination';
@@ -79,6 +80,7 @@ export default function AllProjectsPage() {
     fields: customFields,
     values: customValues,
     error: customError,
+    addField: addCustomField,
     deleteField: deleteCustomField,
     setValue: saveCustomValue,
     reorderFields: reorderCustomFields,
@@ -240,6 +242,28 @@ export default function AllProjectsPage() {
     }
   };
 
+  // Save a single cell (one header of one row) from click-to-edit. Unlike
+  // saveEdit this never enters a whole-row edit mode; it PATCHes just the one
+  // value and refreshes.
+  const saveCell = async (row: SheetRowRecord, header: string, next: string) => {
+    if (toStr(row.cells[header]) === next) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/sheet-rows/${ALL_PROJECTS_PAGE_KEY}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowUid: row.uid, cells: { [header]: next } }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json?.error || 'could not save that change');
+      }
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'could not save that change');
+    }
+  };
+
   const addRow = async (cells: Record<string, string>) => {
     if (!sheet) return false;
     setRowBusy(true);
@@ -266,11 +290,11 @@ export default function AllProjectsPage() {
   const deleteRow = async (row: SheetRowRecord) => {
     const isUser = row.origin === 'user';
     const ok = await confirm({
-      title: isUser ? 'Delete this row?' : 'Hide this row?',
+      title: 'Delete this row?',
       message: isUser
         ? 'This removes it for everyone, along with any fields on it.'
-        : 'It came from the source sheet, so it will stay hidden until you restore it.',
-      confirmLabel: isUser ? 'Delete' : 'Hide',
+        : 'It came from the source sheet, so it will stay removed until you restore it.',
+      confirmLabel: 'Delete',
       tone: 'danger',
     });
     if (!ok) return;
@@ -448,6 +472,7 @@ export default function AllProjectsPage() {
                       totalCount={localTotalRows}
                     />
                     <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
+                    <AddColumnButton onAdd={addCustomField} disabled={rowBusy} />
                   </div>
                 </div>
 
@@ -491,18 +516,28 @@ export default function AllProjectsPage() {
                           <tr key={row.uid} className="hover:bg-brand-50/30 transition-colors">
                             {headers.map(h => {
                               const v = row.cells[h];
-                              return (
-                                <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-slate-700">
-                                  {isEditing ? (
+                              if (isEditing) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-slate-700">
                                     <input
                                       value={editDraft[h] ?? ''}
                                       onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
                                       className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px]"
                                     />
-                                  ) : looksLikeUrl(v)
-                                    ? <a href={v} target="_blank" rel="noreferrer" className="text-brand-600 hover:text-brand-700 hover:underline break-all">{v}</a>
+                                  </td>
+                                );
+                              }
+                              return (
+                                <SheetCell
+                                  key={h}
+                                  value={toStr(v)}
+                                  onSave={next => saveCell(row, h, next)}
+                                  className="border-b border-slate-100 text-slate-700"
+                                >
+                                  {looksLikeUrl(v)
+                                    ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-brand-600 hover:text-brand-700 hover:underline break-all">{v}</a>
                                     : renderPMCell(h, v, toStr(v))}
-                                </td>
+                                </SheetCell>
                               );
                             })}
                             {customFields.map(f => (
@@ -528,7 +563,7 @@ export default function AllProjectsPage() {
                                     className="text-brand-600 hover:text-brand-700 text-[11px] font-semibold mr-3">Edit</button>
                                   <button onClick={() => deleteRow(row)}
                                     className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold">
-                                    {row.origin === 'user' ? 'Delete' : 'Hide'}
+                                    Delete
                                   </button>
                                 </>
                               )}
