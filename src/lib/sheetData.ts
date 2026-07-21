@@ -72,6 +72,34 @@ export async function getPageData(pageKey: string): Promise<AllProjectsData | nu
        FROM sheet_tabs WHERE page_key = ? ORDER BY position ASC, id ASC`,
     [pageKey]
   );
+  if (pageKey === 'projects') {
+    const hasDead = tabs.some(t => t.sheet_name === 'Dead Projects');
+    if (!hasDead) {
+      const pos = tabs.length ? Math.max(...tabs.map(t => t.position)) + 1 : 1;
+      const defaultHeaders = JSON.stringify([
+        'Project name', 'Project Manager', 'Project Scope',
+        'Google Drive link (All Availble Scope)', 'Completed', 'Date',
+        'Developer', 'Status', 'Last Working day', 'Current Update'
+      ]);
+      await query(
+        "INSERT INTO sheet_tabs (page_key, sheet_name, position, headers, synced_at) VALUES ('projects', 'Dead Projects', ?, ?, ?)",
+        [pos, defaultHeaders, Date.now()]
+      );
+      // Re-fetch tabs after ensuring Dead Projects
+      const refreshedTabs = await query<(RowDataPacket & {
+        id: number; sheet_name: string; position: number; headers: unknown;
+        header_order: unknown; synced_at: number;
+      })[]>(
+        `SELECT id, sheet_name, position, headers, header_order, synced_at
+           FROM sheet_tabs WHERE page_key = ? ORDER BY position ASC, id ASC`,
+        [pageKey]
+      );
+      tabs.length = 0;
+      tabs.push(...refreshedTabs);
+    }
+    await autoMoveDeadProjects();
+  }
+
   if (!tabs.length) return null;
 
   const sheets: AllProjectsSheet[] = [];
@@ -321,3 +349,115 @@ export async function restoreRow(pageKey: string, rowUid: string): Promise<boole
   );
   return res.affectedRows > 0;
 }
+
+function parseDateStr(s: string): Date | null {
+  if (!s || typeof s !== 'string') return null;
+  const str = s.trim();
+  if (!str) return null;
+
+  let m = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (m) {
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  m = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (m) {
+    let day = +m[1], month = +m[2], year = +m[3];
+    if (month > 12 && day <= 12) {
+      [day, month] = [month, day];
+    }
+    const d = new Date(year, month - 1, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const parsed = Date.parse(str);
+  if (!isNaN(parsed)) return new Date(parsed);
+
+  return null;
+}
+
+export function parseLastWorkingDayDate(cells: Record<string, string>): Date | null {
+  if (!cells) return null;
+  const keys = [
+    'Last Working day',
+    'Last Working Date',
+    'Last working day',
+    'Last Working Day',
+    'Last working date',
+    'Last Working day ',
+  ];
+  for (const k of keys) {
+    if (cells[k]) {
+      const d = parseDateStr(cells[k]);
+      if (d) return d;
+    }
+  }
+
+  for (const [k, v] of Object.entries(cells)) {
+    if (v && /last\s*working/i.test(k)) {
+      const d = parseDateStr(String(v));
+      if (d) return d;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Auto-move projects in Ongoing Projects (`projects`) that have not been updated
+ * for at least one month (determined by Last Working Day) to the Dead Projects tab.
+ */
+export async function autoMoveDeadProjects(): Promise<void> {
+  const tabs = await query<(RowDataPacket & { id: number; sheet_name: string })[]>(
+    "SELECT id, sheet_name FROM sheet_tabs WHERE page_key = 'projects'"
+  );
+  const deadTab = tabs.find(t => t.sheet_name === 'Dead Projects');
+  if (!deadTab) return;
+
+  const activeTabs = tabs.filter(t => t.sheet_name !== 'Dead Projects');
+  if (!activeTabs.length) return;
+
+  const activeTabIds = activeTabs.map(t => t.id);
+
+  const rows = await query<(RowDataPacket & { row_uid: string; cells: unknown; cells_override: unknown })[]>(
+    `SELECT row_uid, cells, cells_override
+       FROM sheet_rows
+      WHERE tab_id IN (${activeTabIds.map(() => '?').join(',')}) AND hidden = 0`,
+    activeTabIds
+  );
+
+  const now = new Date();
+  const oneMonthAgo = new Date(now);
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+  const toMove: string[] = [];
+
+  for (const r of rows) {
+    const mergedCells: Record<string, string> = {
+      ...(parseJson(r.cells, {}) as Record<string, string>),
+      ...(parseJson(r.cells_override, {}) as Record<string, string>),
+    };
+
+    const lastWorkingDate = parseLastWorkingDayDate(mergedCells);
+    if (lastWorkingDate && lastWorkingDate < oneMonthAgo) {
+      toMove.push(r.row_uid);
+    }
+  }
+
+  if (toMove.length > 0) {
+    const maxRes = await query<(RowDataPacket & { maxIdx: number })[]>(
+      'SELECT COALESCE(MAX(row_index), -1) AS maxIdx FROM sheet_rows WHERE tab_id = ?',
+      [deadTab.id]
+    );
+    let nextIdx = Number(maxRes[0]?.maxIdx ?? -1) + 1;
+
+    for (const uid of toMove) {
+      await query(
+        'UPDATE sheet_rows SET tab_id = ?, row_index = ? WHERE row_uid = ?',
+        [deadTab.id, nextIdx++, uid]
+      );
+    }
+  }
+}
+

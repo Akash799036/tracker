@@ -15,6 +15,7 @@ import { useConfirm } from '@/lib/confirm';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
+import { useProjectCredentials } from '@/lib/useProjectCredentials';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from './ReorderableHeader';
 import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
@@ -153,6 +154,7 @@ export default function SheetSyncPanel({
 
   // Clickable Project Manager cells → drill-down modal.
   const { renderPMCell, pmModal } = usePMDrilldown(headers);
+  const { renderProjectNameCell, credModal } = useProjectCredentials(headers);
 
   // Search spans the sheet's own cells and the custom-field columns, so a row is
   // findable by anything visible on it.
@@ -388,8 +390,8 @@ export default function SheetSyncPanel({
               </div>
 
               <div ref={scrollRef} className="overflow-auto border border-slate-200 rounded-xl scroll-smooth">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-600 sticky top-0">
+                <table className="min-w-full text-sm text-black">
+                  <thead className="bg-slate-50 text-black font-semibold sticky top-0">
                     <tr>
                       {headers.map((h, i) => (
                         <ReorderableHeader
@@ -413,7 +415,7 @@ export default function SheetSyncPanel({
                           onDelete={deleteCustomField}
                         />
                       ))}
-                      <th className="text-right font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50">
+                      <th className="text-right font-semibold text-black px-3 py-2 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50">
                         Actions
                       </th>
                     </tr>
@@ -427,12 +429,12 @@ export default function SheetSyncPanel({
                             const v = row.cells[h];
                             if (isEditing) {
                               return (
-                                <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate">
+                                <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
                                   <input
                                     type={isDateHeader(h) ? 'date' : 'text'}
                                     value={editDraft[h] ?? ''}
                                     onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
-                                    className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm"
+                                    className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm text-black"
                                   />
                                 </td>
                               );
@@ -443,11 +445,11 @@ export default function SheetSyncPanel({
                                 value={toStr(v)}
                                 header={h}
                                 onSave={next => saveCell(row, h, next)}
-                                className="border-b border-slate-100"
+                                className="border-b border-slate-100 text-black"
                               >
                                 {looksLikeUrl(v)
-                                  ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-indigo-600 hover:underline break-all">{v}</a>
-                                  : renderPMCell(h, v, toStr(v))}
+                                  ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 break-all">{v}</a>
+                                  : renderProjectNameCell(row, h, v, renderPMCell(h, v, toStr(v)))}
                               </SheetCell>
                             );
                           })}
@@ -519,6 +521,7 @@ export default function SheetSyncPanel({
       )}
 
       {pmModal}
+      {credModal}
     </section>
   );
 }

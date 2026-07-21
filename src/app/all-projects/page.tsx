@@ -13,6 +13,7 @@ import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
+import { useProjectCredentials } from '@/lib/useProjectCredentials';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
 import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
@@ -185,6 +186,7 @@ export default function AllProjectsPage() {
 
   // Clickable Project Manager cells → drill-down modal.
   const { renderPMCell, pmModal } = usePMDrilldown(headers);
+  const { renderProjectNameCell, credModal } = useProjectCredentials(headers);
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
 
@@ -486,18 +488,18 @@ export default function AllProjectsPage() {
                 </div>
 
                 <div ref={scrollRef} className="overflow-auto scroll-smooth">
-                  <table className="min-w-full text-[12.5px]">
-                    <thead className="bg-slate-50/80 backdrop-blur text-slate-600 sticky top-0 z-10">
+                  <table className="min-w-full text-[12.5px] text-black">
+                    <thead className="bg-slate-50/95 text-black font-bold sticky top-0 backdrop-blur-sm">
                       <tr>
                         {headers.map((h, i) => (
                           <ReorderableHeader
                             key={h}
                             index={i}
                             count={headers.length}
-                            group="sheet-header"
+                            group="all-projects-header"
                             label={h}
                             onMove={reorderHeaders}
-                            className="text-[10.5px] uppercase tracking-wider py-2.5"
+                            className="text-[10.5px] uppercase tracking-wider py-2.5 text-black font-bold"
                           >
                             {h}
                           </ReorderableHeader>
@@ -510,10 +512,10 @@ export default function AllProjectsPage() {
                             count={customFields.length}
                             onMove={reorderCustomFields}
                             onDelete={deleteCustomField}
-                            className="text-[10.5px] uppercase tracking-wider py-2.5"
+                            className="text-[10.5px] uppercase tracking-wider py-2.5 text-black font-bold"
                           />
                         ))}
-                        <th className="text-right text-[10.5px] uppercase tracking-wider font-semibold px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
+                        <th className="text-right text-[10.5px] uppercase tracking-wider font-bold text-black px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
                           Actions
                         </th>
                       </tr>
@@ -527,12 +529,12 @@ export default function AllProjectsPage() {
                               const v = row.cells[h];
                               if (isEditing) {
                                 return (
-                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-slate-700">
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
                                     <input
                                       type={isDateHeader(h) ? 'date' : 'text'}
                                       value={editDraft[h] ?? ''}
                                       onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
-                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px]"
+                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px] text-black"
                                     />
                                   </td>
                                 );
@@ -543,11 +545,11 @@ export default function AllProjectsPage() {
                                   value={toStr(v)}
                                   header={h}
                                   onSave={next => saveCell(row, h, next)}
-                                  className="border-b border-slate-100 text-slate-700"
+                                  className="border-b border-slate-100 text-black font-normal"
                                 >
                                   {looksLikeUrl(v)
-                                    ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-brand-600 hover:text-brand-700 hover:underline break-all">{v}</a>
-                                    : renderPMCell(h, v, toStr(v))}
+                                    ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 break-all">{v}</a>
+                                    : renderProjectNameCell(row, h, v, renderPMCell(h, v, toStr(v)))}
                                 </SheetCell>
                               );
                             })}
@@ -621,6 +623,7 @@ export default function AllProjectsPage() {
       )}
 
       {pmModal}
+      {credModal}
     </div>
   );
 }

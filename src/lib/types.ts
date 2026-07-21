@@ -37,6 +37,10 @@ export type Project = {
   maintenanceEnd?: string;
   maintenanceDuration?: string;
   projectCategory?: string;
+  websiteLink?: string;
+  loginUrl?: string;
+  username?: string;
+  password?: string;
   createdAt?: number;
   updatedAt?: number;
   [key: string]: unknown;
@@ -51,7 +55,7 @@ export const FIELDS = [
   'contentByTeam','socialLinks','clientEmail','clientPhone',
   'privacyPolicy','terms','refundPolicy','paymentGateway',
   'shippingSettings','maintenanceStart','maintenanceEnd','maintenanceDuration',
-  'projectCategory',
+  'projectCategory','websiteLink','loginUrl','username','password',
 ] as const;
 
 export const CSV_HEADERS = [
@@ -64,7 +68,7 @@ export const CSV_HEADERS = [
   'Email id Provided by client','Phone Numbers Client provided','Privacy Policy',
   'Terms & Conditions','Refund / Shipping Policy','Payment Gateway Setup and name',
   'Shipping Settings Provided by client','Start Date of Maintenance','End Date of Maintenance',
-  'Maintenance Duration','Project Category',
+  'Maintenance Duration','Project Category','Website Link','Login URL','Username/ID','Password',
 ];
 
 export const PLATFORM_OPTIONS = ['WordPress','Shopify','Custom HTML','React','Next.js','Laravel','WooCommerce','Wix','Squarespace','Webflow','Other'];

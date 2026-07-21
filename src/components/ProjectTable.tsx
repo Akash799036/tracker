@@ -67,7 +67,7 @@ export default function ProjectTable({
             {pageItems.map(p => (
               <tr key={p.id} className="hover:bg-slate-50/70">
                 <td className="px-4 py-3">
-                  <Link href={`/project?id=${encodeURIComponent(p.id)}`} className="flex items-center gap-3">
+                  <Link href={`/project?id=${encodeURIComponent(p.id)}`} className="flex items-center gap-3" title="Click Me">
                     <div className="avatar" style={{ background: avatarStyle(p.projectName) }}>{initials(p.projectName)}</div>
                     <div className="font-medium text-slate-900">{p.projectName || 'Untitled'}</div>
                   </Link>

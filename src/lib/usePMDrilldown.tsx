@@ -52,7 +52,7 @@ export function usePMDrilldown(headers: string[]) {
           type="button"
           onClick={e => { e.stopPropagation(); setOpenPM(name); }}
           title={`View ${name}'s projects`}
-          className="font-medium text-brand-600 underline decoration-brand-300 decoration-dotted underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-solid focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 rounded"
+          className="font-medium text-black underline decoration-slate-400 decoration-dotted underline-offset-2 transition-colors hover:text-slate-700 hover:decoration-solid focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 rounded"
         >
           {String(value)}
         </button>
