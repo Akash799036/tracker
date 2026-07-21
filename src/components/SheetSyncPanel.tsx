@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   SHEET_SYNC_STORAGE_KEY,
@@ -44,7 +44,7 @@ function looksLikeUrl(v: unknown): v is string {
   return typeof v === 'string' && /^https?:\/\//i.test(v.trim());
 }
 
-export default function SheetSyncPanel({
+function SheetSyncPanelInner({
   pageKey,
   title = 'Project Data',
 }: {
@@ -523,5 +523,16 @@ export default function SheetSyncPanel({
       {pmModal}
       {credModal}
     </section>
+  );
+}
+
+export default function SheetSyncPanel(props: {
+  pageKey: SheetSyncPageKey;
+  title?: string;
+}) {
+  return (
+    <Suspense fallback={null}>
+      <SheetSyncPanelInner {...props} />
+    </Suspense>
   );
 }
