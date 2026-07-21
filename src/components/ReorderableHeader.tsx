@@ -89,7 +89,7 @@ export function ReorderableHeader({
       onDragLeave={() => setDropEdge(null)}
       onDrop={onDrop}
       aria-label={`${label}, column ${index + 1} of ${count}`}
-      className={`group/col relative text-left font-semibold px-3 py-2 whitespace-nowrap border-b border-slate-200 cursor-grab active:cursor-grabbing transition-opacity ${dragging ? 'opacity-40' : ''} ${className}`}
+      className={`group/col relative text-left font-bold text-black px-3 py-2 whitespace-nowrap border-b border-slate-200 cursor-grab active:cursor-grabbing transition-opacity ${dragging ? 'opacity-40' : ''} ${className}`}
     >
       {/* Insertion indicator: a rule on the edge the column would land against,
           which reads more precisely than highlighting the whole cell. */}

@@ -12,6 +12,7 @@ export type DashboardSourceKey =
   | 'live-projects'
   | 'projects'
   | 'priority-list'
+  | 'maintenance-projects'
   | 'marketing'
   | 'dashboard';
 
@@ -25,11 +26,12 @@ export type DashboardSource = {
 };
 
 export const DASHBOARD_SOURCES: DashboardSource[] = [
-  { key: 'all-projects',  label: 'All Projects',      href: '/all-projects',  page: 'all-projects',  storageKey: ALL_PROJECTS_STORAGE_KEY },
-  { key: 'live-projects', label: 'Live Projects',     href: '/live-projects', page: 'live-projects', storageKey: SHEET_SYNC_STORAGE_KEY('live-projects' as SheetSyncPageKey) },
-  { key: 'projects',      label: 'Ongoing Projects',  href: '/projects',      page: 'projects',      storageKey: SHEET_SYNC_STORAGE_KEY('projects' as SheetSyncPageKey) },
-  { key: 'priority-list', label: 'Priority Projects', href: '/priority-list', page: 'priority-list', storageKey: SHEET_SYNC_STORAGE_KEY('priority-list' as SheetSyncPageKey) },
-  { key: 'marketing',     label: 'Marketing Projects',href: '/marketing',     page: 'marketing',     storageKey: SHEET_SYNC_STORAGE_KEY('marketing' as SheetSyncPageKey) },
+  { key: 'all-projects',          label: 'All Projects',         href: '/all-projects',          page: 'all-projects',          storageKey: ALL_PROJECTS_STORAGE_KEY },
+  { key: 'live-projects',         label: 'Live Projects',        href: '/live-projects',         page: 'live-projects',         storageKey: SHEET_SYNC_STORAGE_KEY('live-projects' as SheetSyncPageKey) },
+  { key: 'projects',              label: 'Ongoing Projects',     href: '/projects',              page: 'projects',              storageKey: SHEET_SYNC_STORAGE_KEY('projects' as SheetSyncPageKey) },
+  { key: 'priority-list',         label: 'Priority Projects',    href: '/priority-list',         page: 'priority-list',         storageKey: SHEET_SYNC_STORAGE_KEY('priority-list' as SheetSyncPageKey) },
+  { key: 'maintenance-projects', label: 'Maintenance Projects', href: '/maintenance-projects', page: 'maintenance-projects', storageKey: SHEET_SYNC_STORAGE_KEY('maintenance-projects' as SheetSyncPageKey) },
+  { key: 'marketing',             label: 'Marketing Projects',   href: '/marketing',             page: 'marketing',             storageKey: SHEET_SYNC_STORAGE_KEY('marketing' as SheetSyncPageKey) },
 ];
 
 /**

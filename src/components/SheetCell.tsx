@@ -89,7 +89,7 @@ export function SheetCell({
       // casual click can never overwrite a value.
       onDoubleClick={begin}
       title="Double-click to edit"
-      className={`px-3 py-2 align-middle whitespace-nowrap max-w-[28rem] truncate cursor-default ${className}`}
+      className={`px-3 py-2 align-middle whitespace-nowrap max-w-[28rem] truncate cursor-default text-black ${className}`}
     >
       {/* An empty value would collapse to an unclickable sliver, so show a faint
           dash as the hit target — same convention as CustomFieldCell. */}

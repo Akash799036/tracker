@@ -57,6 +57,7 @@ const FIELD_ORDER = [
   'contentByTeam','socialLinks','clientEmail','clientPhone',
   'privacyPolicy','terms','refundPolicy','paymentGateway',
   'shippingSettings','maintenanceStart','maintenanceEnd','maintenanceDuration',
+  'projectCategory','websiteLink','loginUrl','username','password',
 ] as const;
 
 const DATE_FIELDS = new Set(['startDate','figmaApproval','htmlApproval','cmsApproval','liveDate','lastWorkingDay','maintenanceStart','maintenanceEnd']);

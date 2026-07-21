@@ -12,6 +12,7 @@ type Category =
   | 'live'
   | 'ongoing'
   | 'priority'
+  | 'maintenance'
   | 'marketing';
 type Format = 'xlsx' | 'csv' | 'pdf';
 
@@ -20,6 +21,7 @@ const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'live', label: 'Live Projects' },
   { value: 'ongoing', label: 'Ongoing Projects' },
   { value: 'priority', label: 'Priority Projects' },
+  { value: 'maintenance', label: 'Maintenance Projects' },
   { value: 'marketing', label: 'Marketing Projects' },
 ];
 
@@ -56,6 +58,8 @@ function filterByCategory(projects: Project[], cat: Category): Project[] {
         return /review|testing|development|design/i.test(p.status || '');
       });
     }
+    case 'maintenance':
+      return projects.filter(p => /maint/i.test(p.projectCategory || '') || /maint/i.test(p.projectScope || ''));
     case 'marketing':
       return projects.filter(p => /market/i.test(p.projectCategory || '') || /market/i.test(p.projectScope || ''));
   }

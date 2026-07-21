@@ -195,7 +195,7 @@ export function CustomFieldCell({
       title="Double-click to edit"
       className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20 cursor-default"
     >
-      <span className="block min-w-[8rem] px-2 py-1 text-sm truncate">
+      <span className="block min-w-[8rem] px-2 py-1 text-sm truncate text-black font-normal">
         {value === '' ? <span className="text-slate-300">—</span> : value}
       </span>
     </td>

@@ -47,12 +47,13 @@ loadEnv();
 const ALL_PROJECTS_FALLBACK =
   process.env.ALL_PROJECTS_SHEET_ID || '1F1hcq7Fu3vLcqIt3d0Ns30iz26RjvZRw3lGeDkVhjTM';
 const PAGE_SHEET_IDS = {
-  'projects':      process.env.PROJECTS_SHEET_ID      || '1ui2V0BA6LDKT_rtX7S4B8TnNtFRtMEKoEBKGrhym5II',
-  'live-projects': process.env.LIVE_PROJECTS_SHEET_ID || '1gJK-Czm-1uS5XriD3WTwr5mWW2Kp6FnOQnMpc6A6gmM',
-  'priority-list': process.env.PRIORITY_LIST_SHEET_ID || '1h6QyFLz2q6TVNuTA7DhKvtiDaEONQrIYt8U8SH0dt-s',
-  'maintenance':   process.env.MAINTENANCE_SHEET_ID   || '1zyzWbQ0mQV7l_WJtMKeZB2tUBzw3Bdu40kUodCRnwXA',
-  'marketing':     process.env.MARKETING_SHEET_ID     || '1RWGRBD9mivKY9JAWLCzLK1aR8NMUgxeyVRv06YW3_xs',
-  'dashboard':     process.env.DASHBOARD_SHEET_ID     || ALL_PROJECTS_FALLBACK,
+  'projects':             process.env.PROJECTS_SHEET_ID             || '1ui2V0BA6LDKT_rtX7S4B8TnNtFRtMEKoEBKGrhym5II',
+  'live-projects':        process.env.LIVE_PROJECTS_SHEET_ID        || '1gJK-Czm-1uS5XriD3WTwr5mWW2Kp6FnOQnMpc6A6gmM',
+  'priority-list':        process.env.PRIORITY_LIST_SHEET_ID        || '1h6QyFLz2q6TVNuTA7DhKvtiDaEONQrIYt8U8SH0dt-s',
+  'maintenance-projects': process.env.MAINTENANCE_PROJECTS_SHEET_ID || process.env.MAINTENANCE_SHEET_ID || '1R5xPfKQpnIBskWWNKM81UMD-85hhzEOcll5QEBT8UtE',
+  'maintenance':          process.env.MAINTENANCE_SHEET_ID          || '1R5xPfKQpnIBskWWNKM81UMD-85hhzEOcll5QEBT8UtE',
+  'marketing':            process.env.MARKETING_SHEET_ID            || '1RWGRBD9mivKY9JAWLCzLK1aR8NMUgxeyVRv06YW3_xs',
+  'dashboard':            process.env.DASHBOARD_SHEET_ID            || ALL_PROJECTS_FALLBACK,
 };
 
 // --- xlsx parsing (mirror of the sync route) ------------------------------
