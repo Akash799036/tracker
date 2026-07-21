@@ -128,7 +128,13 @@ export function CustomFieldHeader({
   );
 }
 
-/** Editable cell for one custom field value. Saves on blur or Enter. */
+/**
+ * Editable cell for one custom field value.
+ *
+ * A single click does nothing; a double click reveals the input, matching
+ * SheetCell so every column edits the same way and a stray click never
+ * overwrites a value. Saves on blur or Enter, discards on Escape.
+ */
 export function CustomFieldCell({
   value,
   onSave,
@@ -136,21 +142,51 @@ export function CustomFieldCell({
   value: string;
   onSave: (next: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <td className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
+        <input
+          ref={inputRef}
+          // Uncontrolled so typing never round-trips through the network; the key
+          // forces a remount when the persisted value changes underneath us.
+          defaultValue={value}
+          key={value}
+          onBlur={e => {
+            const next = e.target.value;
+            if (next !== value) onSave(next);
+            setEditing(false);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+          }}
+          placeholder="—"
+          className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white"
+        />
+      </td>
+    );
+  }
+
   return (
-    <td className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
-      <input
-        // Uncontrolled so typing never round-trips through the network; the key
-        // forces a remount when the persisted value changes underneath us.
-        defaultValue={value}
-        key={value}
-        onBlur={e => {
-          const next = e.target.value;
-          if (next !== value) onSave(next);
-        }}
-        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        placeholder="—"
-        className="w-full min-w-[8rem] px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-indigo-400 focus:bg-white text-sm bg-transparent"
-      />
+    <td
+      // A single click does nothing; only a double click opens the editor.
+      onDoubleClick={() => setEditing(true)}
+      title="Double-click to edit"
+      className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20 cursor-default"
+    >
+      <span className="block min-w-[8rem] px-2 py-1 text-sm truncate">
+        {value === '' ? <span className="text-slate-300">—</span> : value}
+      </span>
     </td>
   );
 }

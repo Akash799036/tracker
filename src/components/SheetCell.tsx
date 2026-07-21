@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-// Click-to-edit cell for a synced sheet value.
+// Double-click-to-edit cell for a synced sheet value.
 //
 // Displays `children` (a URL link, a PM drill-down button or plain text — the
-// parent decides). Clicking the cell swaps that display for an input, mirroring
-// how CustomFieldCell already behaves, so every column edits the same way. The
-// edit commits on blur or Enter and is discarded on Escape.
+// parent decides). A single click only *selects* the cell (a visible focus
+// ring); a double click swaps the display for an input. This mirrors how a
+// spreadsheet behaves, so a stray click never clobbers a value. The edit
+// commits on blur or Enter and is discarded on Escape.
 //
 // A single cell PATCHes just its own header via `onSave`; there is no row-level
 // "edit mode" to enter first.
@@ -66,9 +67,11 @@ export function SheetCell({
 
   return (
     <td
-      onClick={begin}
-      title="Click to edit"
-      className={`px-3 py-2 align-middle whitespace-nowrap max-w-[28rem] truncate cursor-text ${className}`}
+      // A single click does nothing; only a double click opens the editor, so a
+      // casual click can never overwrite a value.
+      onDoubleClick={begin}
+      title="Double-click to edit"
+      className={`px-3 py-2 align-middle whitespace-nowrap max-w-[28rem] truncate cursor-default ${className}`}
     >
       {/* An empty value would collapse to an unclickable sliver, so show a faint
           dash as the hit target — same convention as CustomFieldCell. */}
