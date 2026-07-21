@@ -17,7 +17,14 @@ import { verifyPassword } from './password';
 // and an expiry, plus an HMAC so it can't be forged client-side.
 
 export const SESSION_COOKIE = 'pt-session';
-const SESSION_MAX_AGE = 60 * 60 * 8; // 8 hours
+// 30 days. The session also slides: every /api/auth/session check re-issues the
+// cookie for a fresh 30 days (see that route), so an active user is never logged
+// out mid-session — the window only lapses after 30 days of no visits at all.
+const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+
+// Re-issue the cookie only when it is more than this far into its life, so we
+// aren't re-signing and setting a Set-Cookie header on every single poll.
+const SESSION_RENEW_AFTER = 60 * 60 * 24; // 1 day
 
 function secret(): string {
   // No fallback: passwords now live in the database, so AUTH_SECRET is the only
@@ -107,6 +114,21 @@ export function readSessionToken(token: string | undefined): Session | null {
   const expires = Number(expiresRaw);
   if (!Number.isFinite(expires) || expires < Date.now()) return null;
   return { username: Buffer.from(user64, 'base64url').toString(), expires };
+}
+
+/**
+ * Given a still-valid session, decide whether its cookie should be re-issued to
+ * slide the expiry forward. Returns a fresh token to set, or null to leave the
+ * current cookie alone (so we don't write a Set-Cookie on every poll).
+ *
+ * A session issued for SESSION_MAX_AGE is due for renewal once it is more than
+ * SESSION_RENEW_AFTER into that window.
+ */
+export function maybeRenewSessionToken(session: Session): string | null {
+  const issuedAt = session.expires - SESSION_MAX_AGE * 1000;
+  const age = Date.now() - issuedAt;
+  if (age < SESSION_RENEW_AFTER * 1000) return null;
+  return createSessionToken(session.username);
 }
 
 export const sessionCookieOptions = {
