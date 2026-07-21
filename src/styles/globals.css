@@ -145,3 +145,29 @@ html[data-theme="dark"] .glass::before {
   :root { --glass-bg: rgba(255, 255, 255, 0.9); --glass-bg-strong: rgba(255, 255, 255, 0.95); }
   html[data-theme="dark"] { --glass-bg: rgba(17, 24, 39, 0.92); --glass-bg-strong: rgba(17, 24, 39, 0.96); }
 }
+
+/* =====================================================
+   Confirm dialog + toast motion
+   State-conveying entrances only: the dialog scales in from
+   the pointer's plane, toasts slide up from the corner. Both
+   collapse to a plain fade when the user asks for less motion.
+   ===================================================== */
+@keyframes confirmFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes confirmPop {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[confirmFade_150ms_ease-out\],
+  .animate-\[confirmPop_180ms_cubic-bezier\(0\.16\,1\,0\.3\,1\)\],
+  .animate-\[toastIn_220ms_cubic-bezier\(0\.16\,1\,0\.3\,1\)\] {
+    animation: confirmFade 120ms ease-out;
+  }
+}

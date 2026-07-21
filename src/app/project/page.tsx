@@ -2,6 +2,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
+import { useConfirm } from '@/lib/confirm';
+import { useToast } from '@/lib/toast';
 import { PLATFORM_OPTIONS, STATUS_OPTIONS, SSL_OPTIONS, CATEGORY_OPTIONS, type Project } from '@/lib/types';
 import { avatarStyle, initials } from '@/lib/ui';
 
@@ -20,6 +22,8 @@ function ProjectPageInner() {
   const params = useSearchParams();
   const id = params.get('id') || '';
   const { get, upsert, remove, ready } = useStore();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [form, setForm] = useState<Project>(EMPTY);
 
   useEffect(() => {
@@ -36,12 +40,19 @@ function ProjectPageInner() {
     e.preventDefault();
     const saved = upsert({ ...form });
     router.push(`/project?id=${encodeURIComponent(saved.id)}`);
-    alert('Saved');
+    toast.success('Project saved');
   };
 
-  const onDelete = () => {
+  const onDelete = async () => {
     if (!form.id) return;
-    if (!confirm(`Delete "${form.projectName}"?`)) return;
+    const ok = await confirm({
+      title: 'Delete this project?',
+      message: (
+        <>Delete <span className="font-semibold text-slate-800">{form.projectName || 'this project'}</span>? This can&rsquo;t be undone.</>
+      ),
+      tone: 'danger',
+    });
+    if (!ok) return;
     remove(form.id);
     router.push('/projects');
   };

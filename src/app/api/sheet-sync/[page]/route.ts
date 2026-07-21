@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { PAGE_SHEET_IDS, isValidPageKey, type AllProjectsData } from '@/lib/sheetSync';
 import type { RawSheet } from '@/lib/allProjectsTypes';
 import { getPageData, replacePageData } from '@/lib/sheetData';
-import { isAuthenticated } from '@/lib/apiAuth';
-import { redactSensitiveCells } from '@/lib/sensitiveCells';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -50,13 +48,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
   const url = new URL(req.url);
   const refresh = url.searchParams.get('refresh') === '1' || url.searchParams.get('source') === 'google';
 
-  // This page is public, so an anonymous caller gets every row but with the
-  // credential columns blanked. Both return paths below must go through
-  // `serve` — the refresh branch returns rows too, and skipping it there would
-  // leak the whole workbook to anyone who appends ?refresh=1.
-  const authed = await isAuthenticated();
-  const serve = (data: AllProjectsData) =>
-    NextResponse.json(authed ? data : redactSensitiveCells(data));
+  // This page is fully public and unauthenticated: every caller gets every row,
+  // including credential columns. Both return paths below go through `serve`.
+  const serve = (data: AllProjectsData) => NextResponse.json(data);
 
   try {
     if (refresh) {

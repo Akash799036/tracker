@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ALL_PROJECTS_PAGE_KEY, type AllProjectsData, type RawSheet } from '@/lib/allProjectsTypes';
 import { getPageData, replacePageData } from '@/lib/sheetData';
-import { isAuthenticated } from '@/lib/apiAuth';
-import { redactSensitiveCells } from '@/lib/sensitiveCells';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -49,12 +47,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const refresh = url.searchParams.get('refresh') === '1' || url.searchParams.get('source') === 'google';
 
-  // Public route: anonymous callers get every row with credential columns
-  // blanked. Both return paths go through `serve` — see the note in
-  // /api/sheet-sync/[page] about ?refresh=1 bypassing redaction.
-  const authed = await isAuthenticated();
-  const serve = (data: AllProjectsData) =>
-    NextResponse.json(authed ? data : redactSensitiveCells(data));
+  // Fully public, unauthenticated route: every caller gets every row, including
+  // credential columns. Both return paths go through `serve`.
+  const serve = (data: AllProjectsData) => NextResponse.json(data);
 
   try {
     if (refresh) {

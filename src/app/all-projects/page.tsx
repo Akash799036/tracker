@@ -17,6 +17,7 @@ import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
 import { CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
+import { useConfirm } from '@/lib/confirm';
 import Pagination, { usePagination } from '@/components/Pagination';
 import ExportMenu from '@/components/ExportMenu';
 
@@ -58,6 +59,7 @@ function looksLikeUrl(v: unknown): v is string {
 }
 
 export default function AllProjectsPage() {
+  const confirm = useConfirm();
   const [data, setData] = useState<AllProjectsData | null>(null);
   const [ready, setReady] = useState(false);
   const [activeSheet, setActiveSheet] = useState<string>('');
@@ -262,10 +264,16 @@ export default function AllProjectsPage() {
   };
 
   const deleteRow = async (row: SheetRowRecord) => {
-    const message = row.origin === 'user'
-      ? 'Delete this row? This removes it for everyone, along with any fields on it.'
-      : 'Hide this row? It came from the source sheet, so it will stay hidden until you restore it.';
-    if (!confirm(message)) return;
+    const isUser = row.origin === 'user';
+    const ok = await confirm({
+      title: isUser ? 'Delete this row?' : 'Hide this row?',
+      message: isUser
+        ? 'This removes it for everyone, along with any fields on it.'
+        : 'It came from the source sheet, so it will stay hidden until you restore it.',
+      confirmLabel: isUser ? 'Delete' : 'Hide',
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     setError(null);
     try {
