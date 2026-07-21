@@ -34,7 +34,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // Check on mount, then keep a valid session slid forward while a tab stays
+  // open: re-check hourly and whenever the tab regains focus. Each check hits
+  // /api/auth/session, which re-issues the cookie when it's due (see that
+  // route), so an actively-used session never lapses mid-work.
+  useEffect(() => {
+    refresh();
+    const interval = setInterval(refresh, 60 * 60 * 1000); // hourly
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refresh]);
 
   const login = useCallback(async (u: string, p: string) => {
     try {
