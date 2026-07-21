@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { Project } from '@/lib/types';
 import { avatarStyle, fmtDate, initials, statusPillClass } from '@/lib/ui';
+import { useConfirm } from '@/lib/confirm';
 
 export default function ProjectTable({
   projects, onDelete, extraColumns = [],
@@ -11,9 +12,22 @@ export default function ProjectTable({
   onDelete?: (id: string) => void;
   extraColumns?: { label: string; render: (p: Project) => React.ReactNode }[];
 }) {
+  const confirm = useConfirm();
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const PAGE = 15;
+
+  const requestDelete = async (p: Project) => {
+    if (!onDelete) return;
+    const ok = await confirm({
+      title: 'Delete this project?',
+      message: (
+        <>Delete <span className="font-semibold text-slate-800">{p.projectName || 'this project'}</span>? This can&rsquo;t be undone.</>
+      ),
+      tone: 'danger',
+    });
+    if (ok) onDelete(p.id);
+  };
 
   const filtered = useMemo(() => {
     const ql = q.toLowerCase().trim();
@@ -67,7 +81,7 @@ export default function ProjectTable({
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <Link href={`/project?id=${encodeURIComponent(p.id)}`}
                       className="text-indigo-600 hover:text-indigo-700 text-xs font-medium mr-3">Edit</Link>
-                    <button onClick={() => { if (confirm(`Delete "${p.projectName}"?`)) onDelete(p.id); }}
+                    <button onClick={() => requestDelete(p)}
                       className="text-rose-600 hover:text-rose-700 text-xs font-medium">Delete</button>
                   </td>
                 )}

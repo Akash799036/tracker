@@ -11,6 +11,7 @@ import {
 } from '@/lib/sheetSync';
 import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
+import { useConfirm } from '@/lib/confirm';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
@@ -49,6 +50,7 @@ export default function SheetSyncPanel({
 }) {
   const storageKey = SHEET_SYNC_STORAGE_KEY(pageKey);
   const searchParams = useSearchParams();
+  const confirm = useConfirm();
   const [data, setData] = useState<AllProjectsData | null>(null);
   const [ready, setReady] = useState(false);
   const [activeSheet, setActiveSheet] = useState<string>('');
@@ -228,10 +230,16 @@ export default function SheetSyncPanel({
   };
 
   const deleteRow = async (row: SheetRowRecord) => {
-    const message = row.origin === 'user'
-      ? 'Delete this row? This removes it for everyone, along with any fields on it.'
-      : 'Hide this row? It came from the source sheet, so it will stay hidden until you restore it.';
-    if (!confirm(message)) return;
+    const isUser = row.origin === 'user';
+    const ok = await confirm({
+      title: isUser ? 'Delete this row?' : 'Hide this row?',
+      message: isUser
+        ? 'This removes it for everyone, along with any fields on it.'
+        : 'It came from the source sheet, so it will stay hidden until you restore it.',
+      confirmLabel: isUser ? 'Delete' : 'Hide',
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     setError(null);
     try {

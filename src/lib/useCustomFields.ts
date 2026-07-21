@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { moveItem, sameOrder } from './reorder';
+import { useConfirm } from './confirm';
 
 // Client-side state for the database-backed custom fields (extra columns) that
 // any sheet table can render. Scoped to (pageKey, sheetName) to match the API.
@@ -27,6 +28,7 @@ export type ValueMap = Record<string, string>;
 export const vkey = (fieldId: number, rowUid: string) => `${fieldId}:${rowUid}`;
 
 export function useCustomFields(pageKey: string, sheetName: string) {
+  const confirm = useConfirm();
   const [fields, setFields] = useState<CustomField[]>([]);
   const [values, setValues] = useState<ValueMap>({});
   const [busy, setBusy] = useState(false);
@@ -80,7 +82,13 @@ export function useCustomFields(pageKey: string, sheetName: string) {
   }, [pageKey, sheetName]);
 
   const deleteField = useCallback(async (field: CustomField) => {
-    if (!confirm(`Delete the "${field.label}" field and all its values?`)) return;
+    const ok = await confirm({
+      title: 'Delete this field?',
+      message: `Delete the "${field.label}" field and all its values? This can't be undone.`,
+      confirmLabel: 'Delete field',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setError(null);
     try {
       const res = await fetch(`/api/custom-fields/${pageKey}?id=${field.id}`, { method: 'DELETE' });
@@ -97,7 +105,7 @@ export function useCustomFields(pageKey: string, sheetName: string) {
     } catch (e: any) {
       setError(e?.message || 'failed to delete field');
     }
-  }, [pageKey]);
+  }, [pageKey, confirm]);
 
   /**
    * Move one field to a new index, persisting the whole resulting order.
