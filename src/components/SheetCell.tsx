@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 
 // Double-click-to-edit cell for a synced sheet value.
 //
@@ -17,6 +18,7 @@ export function SheetCell({
   value,
   onSave,
   children,
+  header = '',
   className = '',
 }: {
   /** Raw current value, used to seed the editor and detect a real change. */
@@ -25,11 +27,14 @@ export function SheetCell({
   onSave: (next: string) => void | Promise<void>;
   /** Rendered when not editing (link / PM button / plain text). */
   children: ReactNode;
+  /** Column header — a date column swaps the text input for a calendar picker. */
+  header?: string;
   className?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isDate = isDateHeader(header);
 
   useEffect(() => {
     if (editing) {
@@ -38,20 +43,33 @@ export function SheetCell({
     }
   }, [editing]);
 
-  const begin = () => { setDraft(value); setEditing(true); };
+  const begin = () => {
+    // A date column seeds the picker from the normalised value so the calendar
+    // opens on the stored date even if it was stored in another format.
+    setDraft(isDate ? toDateInputValue(value) : value);
+    setEditing(true);
+  };
 
   const commit = () => {
     setEditing(false);
-    if (draft !== value) onSave(draft);
+    // For a date column the draft is normalised ISO, so compare it against the
+    // normalised original rather than the raw stored text — otherwise a value
+    // stored as e.g. "01/02/2025" would look "changed" and re-save every time.
+    const baseline = isDate ? toDateInputValue(value) : value;
+    if (draft !== baseline) onSave(draft);
   };
 
-  const cancel = () => { setEditing(false); setDraft(value); };
+  const cancel = () => {
+    setEditing(false);
+    setDraft(isDate ? toDateInputValue(value) : value);
+  };
 
   if (editing) {
     return (
       <td className={`px-3 py-2 align-middle ${className}`}>
         <input
           ref={inputRef}
+          type={isDate ? 'date' : 'text'}
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}

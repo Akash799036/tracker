@@ -12,6 +12,7 @@ import {
 import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useConfirm } from '@/lib/confirm';
+import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
@@ -173,7 +174,11 @@ export default function SheetSyncPanel({
   const beginEdit = (row: SheetRowRecord) => {
     setEditingUid(row.uid);
     const draft: Record<string, string> = {};
-    for (const h of sheet?.headers ?? []) draft[h] = toStr(row.cells[h]);
+    for (const h of sheet?.headers ?? []) {
+      // Date columns seed the picker with normalised ISO so the calendar opens
+      // on the stored day even when it was stored in another format.
+      draft[h] = isDateHeader(h) ? toDateInputValue(toStr(row.cells[h])) : toStr(row.cells[h]);
+    }
     setEditDraft(draft);
   };
   const cancelEdit = () => { setEditingUid(null); setEditDraft({}); };
@@ -183,7 +188,11 @@ export default function SheetSyncPanel({
     const diff: Record<string, string> = {};
     for (const h of sheet.headers) {
       const next = editDraft[h] ?? '';
-      if (toStr(row.cells[h]) !== next) diff[h] = next;
+      // Date columns hold normalised ISO in the draft, so compare against the
+      // normalised original to avoid a spurious diff (and needless re-save) when
+      // the stored value was in another format but the same day.
+      const original = isDateHeader(h) ? toDateInputValue(toStr(row.cells[h])) : toStr(row.cells[h]);
+      if (original !== next) diff[h] = next;
     }
     if (!Object.keys(diff).length) { cancelEdit(); return; }
 
@@ -420,6 +429,7 @@ export default function SheetSyncPanel({
                               return (
                                 <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate">
                                   <input
+                                    type={isDateHeader(h) ? 'date' : 'text'}
                                     value={editDraft[h] ?? ''}
                                     onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
                                     className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm"
@@ -431,6 +441,7 @@ export default function SheetSyncPanel({
                               <SheetCell
                                 key={h}
                                 value={toStr(v)}
+                                header={h}
                                 onSave={next => saveCell(row, h, next)}
                                 className="border-b border-slate-100"
                               >
@@ -444,6 +455,7 @@ export default function SheetSyncPanel({
                             <CustomFieldCell
                               key={`cf-${f.id}`}
                               value={customValues[vkey(f.id, row.uid)] ?? ''}
+                              label={f.label}
                               onSave={val => saveCustomValue(f.id, row.uid, val)}
                             />
                           ))}
