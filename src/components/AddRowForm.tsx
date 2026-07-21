@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { isDateHeader } from '@/lib/dateField';
 
 // Toolbar button + inline row for adding a new record to a sheet.
 //
@@ -65,19 +66,26 @@ export function AddRowFormRow({
 
   return (
     <tr className="bg-emerald-50/40 border-t-2 border-emerald-200">
-      {headers.map((h, i) => (
-        <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
-          <input
-            ref={i === 0 ? firstRef : undefined}
-            value={draft[h] ?? ''}
-            onChange={e => setDraft(d => ({ ...d, [h]: e.target.value }))}
-            onKeyDown={onKeyDown}
-            placeholder={h}
-            aria-label={h}
-            className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white"
-          />
-        </td>
-      ))}
+      {headers.map((h, i) => {
+        // A date column gets a native calendar picker instead of a free-text box.
+        const isDate = isDateHeader(h);
+        return (
+          <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
+            <input
+              ref={i === 0 ? firstRef : undefined}
+              type={isDate ? 'date' : 'text'}
+              value={draft[h] ?? ''}
+              onChange={e => setDraft(d => ({ ...d, [h]: e.target.value }))}
+              onKeyDown={onKeyDown}
+              // Native date inputs ignore placeholder and show their own format
+              // hint, so only the text inputs carry the column-name placeholder.
+              placeholder={isDate ? undefined : h}
+              aria-label={h}
+              className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white"
+            />
+          </td>
+        );
+      })}
       {Array.from({ length: trailingCols }, (_, i) => (
         <td key={`pad-${i}`} className={`px-3 py-2 ${cellClassName}`} />
       ))}

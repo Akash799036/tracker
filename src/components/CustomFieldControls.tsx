@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CustomField } from '@/lib/useCustomFields';
 import { ReorderableHeader } from './ReorderableHeader';
+import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 
 // Shared UI for the database-backed custom fields, so every table that renders
 // extra columns gets the same toolbar control, header chip and cell editor.
@@ -138,32 +139,42 @@ export function CustomFieldHeader({
 export function CustomFieldCell({
   value,
   onSave,
+  label = '',
 }: {
   value: string;
   onSave: (next: string) => void;
+  /** Field label — a date field swaps the text input for a calendar picker. */
+  label?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isDate = isDateHeader(label);
 
   useEffect(() => {
     if (editing) {
       inputRef.current?.focus();
-      inputRef.current?.select();
+      // A date input has no text range to select; only select() a text input.
+      if (!isDate) inputRef.current?.select();
     }
-  }, [editing]);
+  }, [editing, isDate]);
 
   if (editing) {
+    // A date field seeds and compares against the normalised ISO value so a date
+    // stored in another format still opens the calendar on the right day and
+    // doesn't re-save unchanged.
+    const seed = isDate ? toDateInputValue(value) : value;
     return (
       <td className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
         <input
           ref={inputRef}
+          type={isDate ? 'date' : 'text'}
           // Uncontrolled so typing never round-trips through the network; the key
           // forces a remount when the persisted value changes underneath us.
-          defaultValue={value}
+          defaultValue={seed}
           key={value}
           onBlur={e => {
             const next = e.target.value;
-            if (next !== value) onSave(next);
+            if (next !== seed) onSave(next);
             setEditing(false);
           }}
           onKeyDown={e => {
