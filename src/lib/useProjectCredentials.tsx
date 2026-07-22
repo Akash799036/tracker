@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import Modal from '@/components/Modal';
 import type { SheetRowRecord } from './allProjectsTypes';
 import { isDateHeader, toDateInputValue } from './dateField';
+import { useAuth } from './useAuth';
 
 function ProjectCredentialsModal({
   row,
@@ -20,6 +21,7 @@ function ProjectCredentialsModal({
   onClose: () => void;
   onSave?: () => void | Promise<void>;
 }) {
+  const { canEdit } = useAuth();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -242,13 +244,17 @@ function ProjectCredentialsModal({
           </>
         ) : (
           <>
-            <button
-              onClick={() => setEditing(true)}
-              className="px-3.5 py-1.5 rounded-lg bg-brand-50 border border-brand-200 text-brand-700 text-xs font-semibold hover:bg-brand-100 flex items-center gap-1.5 transition-colors"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              Edit Credentials
-            </button>
+            {/* Editing credentials requires a login; signed-out users can view
+                but not change them. */}
+            {canEdit ? (
+              <button
+                onClick={() => setEditing(true)}
+                className="px-3.5 py-1.5 rounded-lg bg-brand-50 border border-brand-200 text-brand-700 text-xs font-semibold hover:bg-brand-100 flex items-center gap-1.5 transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Edit Credentials
+              </button>
+            ) : <span />}
             <button
               onClick={onClose}
               className="px-4 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm transition-colors"

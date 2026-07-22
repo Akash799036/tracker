@@ -4,9 +4,11 @@ import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
+import { useAuth } from '@/lib/useAuth';
 
 export default function ProjectsPage() {
   const { projects, ready } = useStore();
+  const { canEdit } = useAuth();
   const syncedTotal = useSyncedTotal('projects');
   const totalCount = syncedTotal || projects.length;
 
@@ -37,9 +39,12 @@ export default function ProjectsPage() {
             <p className="mt-2 text-[12px] text-slate-600">Track everything currently in flight across your teams.</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Link href="/project" className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all">
-              + New Project
-            </Link>
+            {/* Creating a project is an edit action — only for signed-in users. */}
+            {canEdit && (
+              <Link href="/project" className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all">
+                + New Project
+              </Link>
+            )}
           </div>
         </div>
       </div>

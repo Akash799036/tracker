@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { writeFile, mkdir, access } from 'node:fs/promises';
 import path from 'node:path';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 const ALLOWED_EXTENSIONS = ['.csv', '.xlsx', '.pdf'];
 
 export async function POST(req: Request) {
+  const auth = await requireAuth();
+  if (auth instanceof Response) return auth;
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

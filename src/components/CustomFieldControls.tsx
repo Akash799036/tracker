@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CustomField } from '@/lib/useCustomFields';
+import { useAuth } from '@/lib/useAuth';
 import { ReorderableHeader } from './ReorderableHeader';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, isPlatformHeader, isPMHeader, isStatusHeader } from '@/lib/types';
@@ -24,12 +25,16 @@ export function AddColumnButton({
   disabled?: boolean;
   label?: string;
 }) {
+  const { canEdit } = useAuth();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+
+  // Adding a column is an edit action — hidden for signed-out users.
+  if (!canEdit) return null;
 
   const close = () => { setOpen(false); setName(''); };
 
@@ -105,6 +110,7 @@ export function CustomFieldHeader({
   onDelete: (field: CustomField) => void;
   className?: string;
 }) {
+  const { canEdit } = useAuth();
   return (
     <ReorderableHeader
       index={index}
@@ -117,15 +123,18 @@ export function CustomFieldHeader({
       className={`bg-indigo-50/40 ${className}`}
     >
       {field.label}
-      <button
-        type="button"
-        onClick={() => onDelete(field)}
-        aria-label={`Delete field ${field.label}`}
-        title="Delete this field"
-        className="text-slate-500 hover:text-rose-600"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+      {/* Deleting a column is an edit action — hidden for signed-out users. */}
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => onDelete(field)}
+          aria-label={`Delete field ${field.label}`}
+          title="Delete this field"
+          className="text-slate-500 hover:text-rose-600"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      )}
     </ReorderableHeader>
   );
 }
@@ -147,6 +156,7 @@ export function CustomFieldCell({
   /** Field label — a date field swaps the text input for a calendar picker. */
   label?: string;
 }) {
+  const { canEdit } = useAuth();
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
   const isDate = isDateHeader(label);
@@ -288,8 +298,9 @@ export function CustomFieldCell({
   return (
     <td
       // A single click does nothing; only a double click opens the editor.
-      onDoubleClick={() => setEditing(true)}
-      title="Double-click to edit"
+      // Signed-out users get no editor.
+      onDoubleClick={() => { if (canEdit) setEditing(true); }}
+      title={canEdit ? 'Double-click to edit' : undefined}
       className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20 cursor-default"
     >
       <span className="block min-w-[8rem] px-2 py-1 text-sm truncate text-black font-normal">

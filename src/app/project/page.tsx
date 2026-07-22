@@ -2,6 +2,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
+import { useAuth } from '@/lib/useAuth';
 import { useConfirm } from '@/lib/confirm';
 import { useToast } from '@/lib/toast';
 import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SSL_OPTIONS, CATEGORY_OPTIONS, SCOPE_OPTIONS, type Project } from '@/lib/types';
@@ -24,9 +25,20 @@ function ProjectPageInner() {
   const params = useSearchParams();
   const id = params.get('id') || '';
   const { get, upsert, remove, ready } = useStore();
+  const { canEdit, ready: authReady } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const [form, setForm] = useState<Project>(EMPTY);
+
+  // This page is entirely a create/edit form, so it's for signed-in users only.
+  // A signed-out visitor who lands here directly is sent to log in (and back
+  // here afterwards). Viewing project data is still possible via the tables.
+  useEffect(() => {
+    if (authReady && !canEdit) {
+      const from = id ? `/project?id=${encodeURIComponent(id)}` : '/project';
+      router.replace(`/login?from=${encodeURIComponent(from)}`);
+    }
+  }, [authReady, canEdit, id, router]);
 
   useEffect(() => {
     if (!ready) return;
@@ -60,6 +72,12 @@ function ProjectPageInner() {
   };
 
   const displayName = form.projectName || (id ? 'Untitled project' : 'New project');
+
+  // Don't flash the editable form at a signed-out visitor while the redirect
+  // above is resolving.
+  if (!authReady || !canEdit) {
+    return <div className="p-6 text-slate-500">Redirecting to sign in…</div>;
+  }
 
   return (
     <form onSubmit={onSave} className="space-y-5 max-w-5xl">
