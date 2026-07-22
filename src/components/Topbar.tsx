@@ -49,21 +49,23 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
             </span>
             <button
               onClick={onLogout}
-              className="shrink-0 h-10 w-10 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm grid place-items-center"
+              className="shrink-0 h-10 px-3 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-100 shadow-sm flex items-center gap-1.5"
               title="Log out"
               aria-label="Log out"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span>Log out</span>
             </button>
           </div>
         ) : (
           <Link
             href="/login"
-            className="shrink-0 h-10 w-10 rounded-lg bg-brand-600 text-white hover:bg-brand-700 shadow-soft grid place-items-center ml-auto"
+            className="shrink-0 h-10 px-3 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 shadow-soft flex items-center gap-1.5 ml-auto"
             title="Log in to edit"
             aria-label="Log in to edit"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            <span>Log in</span>
           </Link>
         )
       )}
