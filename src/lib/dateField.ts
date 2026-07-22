@@ -9,7 +9,7 @@
 // Matched case-insensitively against the header. Kept deliberately broad so the
 // common project-tracker date columns light up without per-sheet configuration.
 const DATE_HEADER_RE =
-  /\b(date|deadline|due|start|end|eta|expiry|expiration|approval|go[\s-]?live|launch|delivery|timeline|milestone|d\.o\.b|dob|birthday|joining|onboard(?:ing|ed)?)\b/i;
+  /\b(date|deadline|due|start|end|eta|expiry|expiration|approval|go[\s-]?live|launch|delivery|timeline|milestone|d\.o\.b|dob|birthday|joining|onboard(?:ing|ed)?|(?:working|last)[\s-]?day)\b/i;
 
 /** True when a column, identified only by its header text, should use a date picker. */
 export function isDateHeader(header: string): boolean {
