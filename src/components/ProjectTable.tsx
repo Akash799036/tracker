@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { Project } from '@/lib/types';
 import { avatarStyle, fmtDate, initials, statusPillClass } from '@/lib/ui';
 import { useConfirm } from '@/lib/confirm';
+import { useAuth } from '@/lib/useAuth';
 
 export default function ProjectTable({
   projects, onDelete, extraColumns = [],
@@ -13,9 +14,14 @@ export default function ProjectTable({
   extraColumns?: { label: string; render: (p: Project) => React.ReactNode }[];
 }) {
   const confirm = useConfirm();
+  const { canEdit } = useAuth();
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const PAGE = 15;
+
+  // Edit/Delete are only offered to signed-in users; a logged-out viewer sees
+  // the table without an Actions column.
+  const showActions = Boolean(onDelete) && canEdit;
 
   const requestDelete = async (p: Project) => {
     if (!onDelete) return;
@@ -57,12 +63,12 @@ export default function ProjectTable({
               <th className="text-left px-4 py-3 font-semibold">Status</th>
               <th className="text-left px-4 py-3 font-semibold">Live</th>
               {extraColumns.map(c => <th key={c.label} className="text-left px-4 py-3 font-semibold">{c.label}</th>)}
-              {onDelete && <th className="text-right px-4 py-3 font-semibold">Actions</th>}
+              {showActions && <th className="text-right px-4 py-3 font-semibold">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {!pageItems.length && (
-              <tr><td colSpan={5 + extraColumns.length + (onDelete ? 1 : 0)} className="p-8 text-center text-slate-500">No projects.</td></tr>
+              <tr><td colSpan={5 + extraColumns.length + (showActions ? 1 : 0)} className="p-8 text-center text-slate-500">No projects.</td></tr>
             )}
             {pageItems.map(p => (
               <tr key={p.id} className="hover:bg-slate-50/70">
@@ -77,7 +83,7 @@ export default function ProjectTable({
                 <td className="px-4 py-3"><span className={statusPillClass(p.status)}>{p.status || 'Not Set'}</span></td>
                 <td className="px-4 py-3 text-black">{fmtDate(p.liveDate)}</td>
                 {extraColumns.map(c => <td key={c.label} className="px-4 py-3 text-black">{c.render(p)}</td>)}
-                {onDelete && (
+                {showActions && (
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <Link href={`/project?id=${encodeURIComponent(p.id)}`}
                       className="text-indigo-600 hover:text-indigo-700 text-xs font-medium mr-3">Edit</Link>

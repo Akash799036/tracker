@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type DragEvent, type ReactNode } from 'react';
+import { useAuth } from '@/lib/useAuth';
 
 // Shared drag-and-drop + keyboard reordering for table column headers.
 //
@@ -35,6 +36,7 @@ type Props = {
 export function ReorderableHeader({
   index, count, group, label, onMove, className = '', children,
 }: Props) {
+  const { canEdit } = useAuth();
   const [dragging, setDragging] = useState(false);
   // Which edge the pending drop would land on, for the insertion indicator.
   const [dropEdge, setDropEdge] = useState<'left' | 'right' | null>(null);
@@ -75,6 +77,19 @@ export function ReorderableHeader({
 
   const canPrev = index > 0;
   const canNext = index < count - 1;
+
+  // Reordering columns is an edit action. For signed-out users the header is a
+  // plain, non-draggable cell with no move controls.
+  if (!canEdit) {
+    return (
+      <th
+        aria-label={`${label}, column ${index + 1} of ${count}`}
+        className={`relative text-left font-bold text-black px-3 py-2 whitespace-nowrap border-b border-slate-200 ${className}`}
+      >
+        <span className="inline-flex items-center gap-1">{children}</span>
+      </th>
+    );
+  }
 
   return (
     <th

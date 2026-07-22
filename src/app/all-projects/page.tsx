@@ -21,6 +21,7 @@ import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from '@/component
 import { SheetCell } from '@/components/SheetCell';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
 import { useConfirm } from '@/lib/confirm';
+import { useAuth } from '@/lib/useAuth';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
 import { FileUploadInput } from '@/components/FileUploadInput';
@@ -68,6 +69,7 @@ function looksLikeUrl(v: unknown): v is string {
 
 export default function AllProjectsPage() {
   const confirm = useConfirm();
+  const { canEdit } = useAuth();
   const [data, setData] = useState<AllProjectsData | null>(null);
   const [ready, setReady] = useState(false);
   const [activeSheet, setActiveSheet] = useState<string>('');
@@ -377,21 +379,25 @@ export default function AllProjectsPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
-            <label className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 hover:border-slate-300 items-center gap-1.5 shadow-sm cursor-pointer transition-colors">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              {busy === 'upload' ? 'Uploading…' : 'Upload .xlsx / .csv'}
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                className="hidden"
-                disabled={busy !== null}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) runUpload(f);
-                }}
-              />
-            </label>
+            {/* Uploading replaces the sheet data — an edit action, so it is only
+                offered to signed-in users. */}
+            {canEdit && (
+              <label className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 hover:border-slate-300 items-center gap-1.5 shadow-sm cursor-pointer transition-colors">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                {busy === 'upload' ? 'Uploading…' : 'Upload .xlsx / .csv'}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  disabled={busy !== null}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) runUpload(f);
+                  }}
+                />
+              </label>
+            )}
           </div>
         </div>
       </div>
@@ -520,9 +526,13 @@ export default function AllProjectsPage() {
                             className="text-[10.5px] uppercase tracking-wider py-2.5 text-black font-bold"
                           />
                         ))}
-                        <th className="text-right text-[10.5px] uppercase tracking-wider font-bold text-black px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
-                          Actions
-                        </th>
+                        {/* Actions column is edit-only, so it's hidden for
+                            signed-out (read-only) users. */}
+                        {canEdit && (
+                          <th className="text-right text-[10.5px] uppercase tracking-wider font-bold text-black px-3 py-2.5 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50/95">
+                            Actions
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -681,27 +691,29 @@ export default function AllProjectsPage() {
                                 onSave={val => saveCustomValue(f.id, row.uid, val)}
                               />
                             ))}
-                            <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
-                              {isEditing ? (
-                                <>
-                                  <button onClick={() => saveEdit(row)} disabled={rowBusy}
-                                    className="text-emerald-600 hover:text-emerald-700 text-[11px] font-semibold mr-3 disabled:opacity-50">
-                                    {rowBusy ? 'Saving…' : 'Save'}
-                                  </button>
-                                  <button onClick={cancelEdit}
-                                    className="text-slate-500 hover:text-slate-700 text-[11px] font-semibold">Cancel</button>
-                                </>
-                              ) : (
-                                <>
-                                  <button onClick={() => beginEdit(row)}
-                                    className="text-brand-600 hover:text-brand-700 text-[11px] font-semibold mr-3">Edit</button>
-                                  <button onClick={() => deleteRow(row)}
-                                    className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold">
-                                    Delete
-                                  </button>
-                                </>
-                              )}
-                            </td>
+                            {canEdit && (
+                              <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
+                                {isEditing ? (
+                                  <>
+                                    <button onClick={() => saveEdit(row)} disabled={rowBusy}
+                                      className="text-emerald-600 hover:text-emerald-700 text-[11px] font-semibold mr-3 disabled:opacity-50">
+                                      {rowBusy ? 'Saving…' : 'Save'}
+                                    </button>
+                                    <button onClick={cancelEdit}
+                                      className="text-slate-500 hover:text-slate-700 text-[11px] font-semibold">Cancel</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button onClick={() => beginEdit(row)}
+                                      className="text-brand-600 hover:text-brand-700 text-[11px] font-semibold mr-3">Edit</button>
+                                    <button onClick={() => deleteRow(row)}
+                                      className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold">
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -717,8 +729,8 @@ export default function AllProjectsPage() {
                       )}
                       {filteredRows.length === 0 && !addingRow && (
                         <tr>
-                          <td colSpan={(headers.length || 1) + customFields.length + 1} className="px-3 py-10 text-center text-slate-500 italic">
-                            {sheet.rows.length === 0 ? 'No rows yet. Use Add Row to create one.' : 'No matching rows.'}
+                          <td colSpan={(headers.length || 1) + customFields.length + (canEdit ? 1 : 0)} className="px-3 py-10 text-center text-slate-500 italic">
+                            {sheet.rows.length === 0 ? (canEdit ? 'No rows yet. Use Add Row to create one.' : 'No rows yet.') : 'No matching rows.'}
                           </td>
                         </tr>
                       )}

@@ -13,6 +13,7 @@ import {
 import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useConfirm } from '@/lib/confirm';
+import { useAuth } from '@/lib/useAuth';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
@@ -75,6 +76,7 @@ function SheetSyncPanelInner({
   const storageKey = SHEET_SYNC_STORAGE_KEY(pageKey);
   const searchParams = useSearchParams();
   const confirm = useConfirm();
+  const { canEdit } = useAuth();
   const [data, setData] = useState<AllProjectsData | null>(null);
   const [ready, setReady] = useState(false);
   const [activeSheet, setActiveSheet] = useState<string>('');
@@ -459,9 +461,13 @@ function SheetSyncPanelInner({
                           onDelete={deleteCustomField}
                         />
                       ))}
-                      <th className="text-right font-semibold text-black px-3 py-2 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50">
-                        Actions
-                      </th>
+                      {/* The Actions column holds only edit/delete controls, so
+                          it disappears entirely for signed-out (read-only) users. */}
+                      {canEdit && (
+                        <th className="text-right font-semibold text-black px-3 py-2 whitespace-nowrap border-b border-slate-200 sticky right-0 bg-slate-50">
+                          Actions
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -620,27 +626,29 @@ function SheetSyncPanelInner({
                               onSave={val => saveCustomValue(f.id, row.uid, val)}
                             />
                           ))}
-                          <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
-                            {isEditing ? (
-                              <>
-                                <button onClick={() => saveEdit(row)} disabled={rowBusy}
-                                  className="text-emerald-600 hover:text-emerald-700 text-xs font-medium mr-3 disabled:opacity-50">
-                                  {rowBusy ? 'Saving…' : 'Save'}
-                                </button>
-                                <button onClick={cancelEdit}
-                                  className="text-slate-500 hover:text-slate-700 text-xs font-medium">Cancel</button>
-                              </>
-                            ) : (
-                              <>
-                                <button onClick={() => beginEdit(row)}
-                                  className="text-indigo-600 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
-                                <button onClick={() => deleteRow(row)}
-                                  className="text-rose-600 hover:text-rose-700 text-xs font-medium">
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                          </td>
+                          {canEdit && (
+                            <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
+                              {isEditing ? (
+                                <>
+                                  <button onClick={() => saveEdit(row)} disabled={rowBusy}
+                                    className="text-emerald-600 hover:text-emerald-700 text-xs font-medium mr-3 disabled:opacity-50">
+                                    {rowBusy ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button onClick={cancelEdit}
+                                    className="text-slate-500 hover:text-slate-700 text-xs font-medium">Cancel</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={() => beginEdit(row)}
+                                    className="text-indigo-600 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
+                                  <button onClick={() => deleteRow(row)}
+                                    className="text-rose-600 hover:text-rose-700 text-xs font-medium">
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -656,8 +664,8 @@ function SheetSyncPanelInner({
                     )}
                     {filteredRows.length === 0 && !addingRow && (
                       <tr>
-                        <td colSpan={(headers.length || 1) + customFields.length + 1} className="px-3 py-6 text-center text-slate-500">
-                          {totalRows === 0 ? 'No rows yet. Use Add Row to create one.' : 'No matching rows.'}
+                        <td colSpan={(headers.length || 1) + customFields.length + (canEdit ? 1 : 0)} className="px-3 py-6 text-center text-slate-500">
+                          {totalRows === 0 ? (canEdit ? 'No rows yet. Use Add Row to create one.' : 'No rows yet.') : 'No matching rows.'}
                         </td>
                       </tr>
                     )}

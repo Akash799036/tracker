@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isValidPageKey } from '@/lib/sheetSync';
 import { setHeaderOrder } from '@/lib/sheetData';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -11,6 +12,8 @@ export const revalidate = 0;
 // There is no GET: the order is already baked into the headers array that
 // /api/sheet-sync returns, so the client never needs to fetch it separately.
 export async function PUT(req: Request, { params }: { params: Promise<{ page: string }> }) {
+  const auth = await requireAuth();
+  if (auth instanceof Response) return auth;
   const { page: pageKey } = await params;
   if (!isValidPageKey(pageKey)) {
     return NextResponse.json({ error: `unknown page "${pageKey}"` }, { status: 404 });

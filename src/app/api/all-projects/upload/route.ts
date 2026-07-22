@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { AllProjectsData, AllProjectsSheet } from '@/lib/allProjectsTypes';
+import { requireAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,8 @@ function rowsToSheet(name: string, matrix: string[][]): AllProjectsSheet {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireAuth();
+  if (auth instanceof Response) return auth;
   try {
     const form = await req.formData();
     const file = form.get('file') as File | null;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/lib/useAuth';
 import { isDateHeader } from '@/lib/dateField';
 import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
 import { FileUploadInput } from './FileUploadInput';
@@ -21,6 +22,9 @@ export function AddRowButton({
   disabled?: boolean;
   label?: string;
 }) {
+  const { canEdit } = useAuth();
+  // Adding a row is an edit action — hidden for signed-out users.
+  if (!canEdit) return null;
   return (
     <button
       type="button"

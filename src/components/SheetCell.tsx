@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useAuth } from '@/lib/useAuth';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
 import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
 import { FileUploadInput } from './FileUploadInput';
@@ -35,6 +36,7 @@ export function SheetCell({
   header?: string;
   className?: string;
 }) {
+  const { canEdit } = useAuth();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
@@ -56,6 +58,7 @@ export function SheetCell({
   }, [editing]);
 
   const begin = () => {
+    if (!canEdit) return; // read-only for signed-out users
     setDraft(isDate ? toDateInputValue(value) : value);
     setEditing(true);
   };
@@ -218,9 +221,9 @@ export function SheetCell({
   return (
     <td
       // A single click does nothing; only a double click opens the editor, so a
-      // casual click can never overwrite a value.
+      // casual click can never overwrite a value. Signed-out users get no editor.
       onDoubleClick={begin}
-      title="Double-click to edit"
+      title={canEdit ? 'Double-click to edit' : undefined}
       className={`px-3 py-2 align-middle whitespace-nowrap max-w-[28rem] truncate cursor-default text-black ${className}`}
     >
       {/* An empty value would collapse to an unclickable sliver, so show a faint
