@@ -32,3 +32,16 @@ export const PAGE_SHEET_IDS: Record<SheetSyncPageKey, string> = {
 export function isValidPageKey(v: string): v is SheetSyncPageKey {
   return v in PAGE_SHEET_IDS;
 }
+
+/**
+ * Standardize heading / PM names:
+ * - "Biswajit da" -> "Biswajit"
+ * - "Sayanda" / "Sayan da" -> "Sayandip"
+ */
+export function formatHeadingName(name: string): string {
+  if (!name) return name;
+  let str = String(name).trim();
+  str = str.replace(/\bbiswajit\s*da\b/gi, 'Biswajit');
+  str = str.replace(/\b(sayanda|sayan\s*da)\b/gi, 'Sayandip');
+  return str;
+}

@@ -41,12 +41,39 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 type Ctx = {
   tasks: MarketingTask[];
   ready: boolean;
-  upsert: (t: MarketingTask) => MarketingTask;
-  remove: (id: string) => void;
+  upsert: (t: MarketingTask) => MarketingTask | Promise<MarketingTask>;
+  remove: (id: string) => void | Promise<void>;
   clear: () => void;
 };
 
 const C = createContext<Ctx | null>(null);
+
+function taskToCells(t: MarketingTask): Record<string, string> {
+  return {
+    'Marketing Tasks Details': t.taskType || '',
+    'PM Name': t.pm || '',
+    'Date': t.date || '',
+    'DM Person Name': t.dm || '',
+    'Link / File': t.link || '',
+    'Status': t.status || '',
+    'Completion Status': t.completion || '',
+    'Work Status': t.workStatus || '',
+  };
+}
+
+function cellsToTask(rowUid: string, cells: Record<string, string>): MarketingTask {
+  return {
+    id: rowUid,
+    taskType: cells['Marketing Tasks Details'] || cells['Task Details'] || cells['taskType'] || '',
+    pm: cells['PM Name'] || cells['PM'] || '',
+    date: cells['Date'] || '',
+    dm: cells['DM Person Name'] || cells['DM'] || '',
+    link: cells['Link / File'] || cells['Link'] || '',
+    status: cells['Status'] || '',
+    completion: cells['Completion Status'] || cells['Completion'] || '',
+    workStatus: cells['Work Status'] || '',
+  };
+}
 
 export function MarketingProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<MarketingTask[]>([]);
@@ -65,6 +92,27 @@ export function MarketingProvider({ children }: { children: React.ReactNode }) {
     }
     setTasks(list);
     setReady(true);
+
+    // Synchronize with live database
+    const syncDatabase = async () => {
+      try {
+        const res = await fetch('/api/sheet-sync/marketing');
+        if (!res.ok) return;
+        const data = await res.json();
+        const dbTasks: MarketingTask[] = [];
+        for (const sheet of data.sheets || []) {
+          for (const row of sheet.rows || []) {
+            dbTasks.push(cellsToTask(row.uid, row.cells));
+          }
+        }
+        if (dbTasks.length > 0) {
+          setTasks(dbTasks);
+          try { localStorage.setItem(KEY, JSON.stringify(dbTasks)); } catch {}
+        }
+      } catch {}
+    };
+
+    syncDatabase();
   }, []);
 
   const persist = useCallback((next: MarketingTask[]) => {
@@ -72,21 +120,65 @@ export function MarketingProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
   }, []);
 
-  const upsert = useCallback((t: MarketingTask) => {
+  const upsert = useCallback(async (t: MarketingTask) => {
     const list = tasks.slice();
     const now = Date.now();
-    if (t.id) {
-      const i = list.findIndex(x => x.id === t.id);
-      if (i > -1) { t.createdAt = list[i].createdAt || now; t.updatedAt = now; list[i] = t; }
-      else { t.createdAt = now; t.updatedAt = now; list.unshift(t); }
-    } else {
-      t.id = uid(); t.createdAt = now; t.updatedAt = now; list.unshift(t);
+    let targetId = t.id;
+    if (!targetId) {
+      targetId = uid();
+      t.id = targetId;
     }
+
+    const i = list.findIndex(x => x.id === targetId);
+    if (i > -1) {
+      t.createdAt = list[i].createdAt || now;
+      t.updatedAt = now;
+      list[i] = t;
+    } else {
+      t.createdAt = now;
+      t.updatedAt = now;
+      list.unshift(t);
+    }
+
     persist(list);
+
+    // Sync with live database
+    try {
+      const cells = taskToCells(t);
+      if (t.id && i > -1) {
+        await fetch('/api/sheet-rows/marketing', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rowUid: t.id, cells }),
+        });
+      } else {
+        const res = await fetch('/api/sheet-rows/marketing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sheetName: 'Marketing', cells }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.row?.uid) {
+            t.id = json.row.uid;
+            const updatedList = list.map(item => item.id === targetId ? { ...item, id: json.row.uid } : item);
+            persist(updatedList);
+          }
+        }
+      }
+    } catch {}
+
     return t;
   }, [tasks, persist]);
 
-  const remove = useCallback((id: string) => persist(tasks.filter(t => t.id !== id)), [tasks, persist]);
+  const remove = useCallback(async (id: string) => {
+    persist(tasks.filter(t => t.id !== id));
+    try {
+      await fetch(`/api/sheet-rows/marketing?uid=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    } catch {}
+  }, [tasks, persist]);
 
   const clear = useCallback(() => {
     setTasks([]);

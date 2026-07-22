@@ -79,15 +79,33 @@ function toAOA(projects: Project[]): (string | number | boolean)[][] {
   return rows;
 }
 
+import { getCleanFileName, getScopeFileUrl } from '@/lib/ui';
+
 function toCSV(projects: Project[]) {
-  const esc = (v: unknown) => {
+  const toFullUrl = (url: string) => {
+    if (url.startsWith('/')) {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      return `${origin}${url}`;
+    }
+    return url;
+  };
+
+  const esc = (v: unknown, fName?: string, projName?: string) => {
     let s: string;
     if (typeof v === 'boolean') s = v ? 'Yes' : 'No';
-    else s = v == null ? '' : String(v);
+    else s = v == null ? '' : String(v).trim();
+    if (!s) return '""';
+
+    if (fName === 'projectScope' || fName === 'driveLink' || /^(https?:\/\/|\/uploads\/)/i.test(s)) {
+      const targetUrl = getScopeFileUrl(s, projName);
+      const fullUrl = toFullUrl(targetUrl);
+      const label = projName || getCleanFileName(s);
+      return `"=HYPERLINK(""${fullUrl.replace(/"/g, '""')}"", ""${label.replace(/"/g, '""')}"")"`;
+    }
     return `"${s.replace(/"/g, '""')}"`;
   };
-  const rows = [CSV_HEADERS.map(esc).join(',')];
-  projects.forEach(p => rows.push(FIELDS.map(f => esc((p as any)[f])).join(',')));
+  const rows = [CSV_HEADERS.map(h => `"${h.replace(/"/g, '""')}"`).join(',')];
+  projects.forEach(p => rows.push(FIELDS.map(f => esc((p as any)[f], f, p.projectName)).join(',')));
   return rows.join('\n');
 }
 

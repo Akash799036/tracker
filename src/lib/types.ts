@@ -61,7 +61,7 @@ export const FIELDS = [
 export const CSV_HEADERS = [
   'Project name','Start Date','Platform','Figma Approval Date','Html Approval Date',
   'Cms Approval Date','Project Live Date','Project Manager','Project Scope',
-  'Google Drive link (All Available Scope)','Developer','Status','Last Working day',
+  'Document Upload','Developer','Status','Last Working day',
   'Current Update','Domain Name','Hosting','Hosting Detail','Domain','SSL Status',
   'Admin Access','Editor Access','Dummy content used','Content copied from existing website',
   'Content provided by client in document','Content written by our team','Social Links Available',
@@ -72,6 +72,78 @@ export const CSV_HEADERS = [
 ];
 
 export const PLATFORM_OPTIONS = ['WordPress','Shopify','Custom HTML','React','Next.js','Laravel','WooCommerce','Wix','Squarespace','Webflow','Other'];
+export const DEVELOPER_OPTIONS = [
+  'Akash Chakraborty',
+  'Dipraj Sarkar',
+  'Ramakrushna Behera',
+  'Soham Paul',
+  'Sakhil Mondal',
+  'Kritika Roy',
+  'Sonali Kumari',
+  'Sourav Metya',
+  'Sayandip Saha',
+  'Subham Dey',
+  'Amit Saha',
+  'Sagnik Dey',
+  'Safikul Islam',
+  'Richa Sinha',
+  'Bhumi Sankar',
+  'Riya Pahan',
+  'Manaswita Karar',
+  'Tiasha Karmakar',
+  'Biswajit Mondal',
+  'Subhadeep Das',
+  'Tarasankar Dey',
+  'Monoti Mondal',
+  'Bibek Kotal',
+];
 export const STATUS_OPTIONS = ['Not Started','In Progress','Design Phase','Development','Client Review','Testing','Live','On Hold','Cancelled'];
 export const SSL_OPTIONS = ['Active','Pending','Expired','Not Applicable'];
 export const CATEGORY_OPTIONS = ['Ongoing','Pending','Hold','Dead'];
+export const SCOPE_OPTIONS = ['Yes','No'];
+
+export const PM_OPTIONS = [
+  'Debjoti Dutta',
+  'Sibam Sinha',
+  'Pinak Choudhuri',
+  'Akash Nag',
+  'Surajit Basak',
+  'Kapil Kumar',
+  'Rajdeep Sarkar',
+  'Jyotismita Sarkar',
+  'Megha Dhara',
+  'Kusum Gurung',
+  'Pritam Sen',
+  'Biswajit Mondal',
+  'Sayandip Saha',
+  'Other',
+];
+
+export function isPlatformHeader(header: string): boolean {
+  return /\bplatform\b/i.test(header || '');
+}
+
+export function isPMHeader(header: string): boolean {
+  return /(project manager|\bpm\b)/i.test(header || '');
+}
+
+export function isDeveloperHeader(header: string): boolean {
+  return /\b(developer|dev)\b/i.test(header || '');
+}
+
+export function isStatusHeader(header: string): boolean {
+  return /\bstatus\b/i.test(header || '');
+}
+
+// The Project Scope column is a Yes/No dropdown, distinct from the file/drive
+// columns handled by isDriveOrScopeHeader below.
+export function isScopeHeader(header: string): boolean {
+  return /project scope|\bscope\b/i.test(header || '');
+}
+
+export function isDriveOrScopeHeader(header: string): boolean {
+  // Scope is deliberately excluded — it renders as a Yes/No dropdown, not a file
+  // upload — so an early return keeps it out of the drive/document match below.
+  if (isScopeHeader(header)) return false;
+  return /(google drive|drive link|drive|document upload|document)/i.test(header || '');
+}

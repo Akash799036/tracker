@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pool, query } from './db';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import type { AllProjectsData, AllProjectsSheet, SheetRow, SheetRowRecord } from './allProjectsTypes';
+import { formatHeadingName } from './sheetSync';
 // The schema and the reconciling sync live in scripts/lib/sheetStore.mjs so the
 // seeder (plain .mjs, no build step) and this module share one implementation.
 // Only read/mutation helpers that the app needs are defined here.
@@ -130,7 +131,8 @@ export async function getPageData(pageKey: string): Promise<AllProjectsData | nu
         ...(parseJson(r.cells_override, {}) as SheetRow),
       },
     }));
-    sheets.push({ name: tab.sheet_name, headers, rows });
+    const formattedSheetName = formatHeadingName(tab.sheet_name);
+    sheets.push({ name: formattedSheetName, headers, rows });
   }
 
   return { sheets, syncedAt, source: 'google-sheets', sourceName: pageKey };
@@ -174,6 +176,27 @@ async function findTab(pageKey: string, sheetName: string) {
   return { id: rows[0].id, headers: parseJson(rows[0].headers, []) as string[] };
 }
 
+async function findOrCreateTab(pageKey: string, sheetName: string) {
+  const existing = await findTab(pageKey, sheetName);
+  if (existing) return existing;
+
+  const defaultHeaders = [
+    'Project name', 'Start Date', 'Platform', 'Figma Approval Date', 'Html Approval Date',
+    'Cms Approval Date', 'Project Live Date', 'Project Manager', 'Project Scope',
+    'Google Drive link (All Available Scope)', 'Developer', 'Status', 'Last Working day',
+    'Current Update', 'Domain Name', 'Hosting', 'Hosting Detail', 'Domain', 'SSL Status',
+    'Admin Access', 'Editor Access', 'Client Email', 'Client Phone',
+    'Start Date of Maintenance', 'End Date of Maintenance', 'Maintenance Duration',
+    'Project Category', 'Website Link', 'Login URL', 'Username/ID', 'Password'
+  ];
+
+  await query(
+    'INSERT INTO sheet_tabs (page_key, sheet_name, position, headers, synced_at) VALUES (?, ?, 1, ?, ?)',
+    [pageKey, sheetName, JSON.stringify(defaultHeaders), Date.now()]
+  );
+  return findTab(pageKey, sheetName);
+}
+
 /**
  * Confirm a row belongs to the given page before mutating it or anything keyed
  * to it. Every route that accepts a client-supplied rowUid must call this —
@@ -215,7 +238,7 @@ export async function insertUserRow(
   pageKey: string, sheetName: string, cells: Record<string, string>
 ): Promise<SheetRowRecord | null> {
   await ensureSheetTables();
-  const tab = await findTab(pageKey, sheetName);
+  const tab = await findOrCreateTab(pageKey, sheetName);
   if (!tab) return null;
 
   const clean: SheetRow = {};

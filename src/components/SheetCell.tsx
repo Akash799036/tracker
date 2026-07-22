@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
+import { FileUploadInput } from './FileUploadInput';
+import { DeveloperMultiSelect } from './DeveloperMultiSelect';
+import { SelectWithAddNew } from './SelectWithAddNew';
 
 // Double-click-to-edit cell for a synced sheet value.
 //
@@ -33,28 +37,31 @@ export function SheetCell({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
   const isDate = isDateHeader(header);
+  const isPlatform = isPlatformHeader(header);
+  const isPM = isPMHeader(header);
+  const isDeveloper = isDeveloperHeader(header);
+  const isStatus = isStatusHeader(header);
+  const isScope = isScopeHeader(header);
+  const isDriveOrScope = isDriveOrScopeHeader(header);
 
   useEffect(() => {
     if (editing) {
       inputRef.current?.focus();
-      inputRef.current?.select();
+      if (inputRef.current && 'select' in inputRef.current) {
+        (inputRef.current as HTMLInputElement).select?.();
+      }
     }
   }, [editing]);
 
   const begin = () => {
-    // A date column seeds the picker from the normalised value so the calendar
-    // opens on the stored date even if it was stored in another format.
     setDraft(isDate ? toDateInputValue(value) : value);
     setEditing(true);
   };
 
   const commit = () => {
     setEditing(false);
-    // For a date column the draft is normalised ISO, so compare it against the
-    // normalised original rather than the raw stored text — otherwise a value
-    // stored as e.g. "01/02/2025" would look "changed" and re-save every time.
     const baseline = isDate ? toDateInputValue(value) : value;
     if (draft !== baseline) onSave(draft);
   };
@@ -65,10 +72,135 @@ export function SheetCell({
   };
 
   if (editing) {
+    if (isDriveOrScope) {
+      return (
+        <td className={`px-3 py-2 align-middle ${className}`}>
+          <div className="flex items-center gap-2">
+            <FileUploadInput
+              value={draft}
+              onChange={val => { setDraft(val); }}
+              className="w-full px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+            />
+            <button
+              type="button"
+              onClick={commit}
+              className="px-2 py-1 bg-emerald-600 text-white rounded text-xs font-semibold shrink-0"
+            >
+              Done
+            </button>
+          </div>
+        </td>
+      );
+    }
+
+    if (isPlatform) {
+      return (
+        <td className={`px-3 py-2 align-middle ${className}`}>
+          <SelectWithAddNew
+            value={draft}
+            onChange={val => setDraft(val)}
+            options={PLATFORM_OPTIONS}
+            placeholder="Select Platform…"
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commit(); }
+              if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            }}
+            selectRef={inputRef as any}
+          />
+        </td>
+      );
+    }
+
+    if (isPM) {
+      return (
+        <td className={`px-3 py-2 align-middle ${className}`}>
+          <SelectWithAddNew
+            value={draft}
+            onChange={val => setDraft(val)}
+            options={PM_OPTIONS}
+            placeholder="Select PM…"
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commit(); }
+              if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            }}
+            selectRef={inputRef as any}
+          />
+        </td>
+      );
+    }
+
+    if (isDeveloper) {
+      return (
+        <td className={`px-3 py-2 align-middle ${className}`}>
+          <div className="flex items-center gap-2">
+            <DeveloperMultiSelect
+              value={draft}
+              onChange={val => setDraft(val)}
+              onBlur={commit}
+              autoOpen
+              className="w-full min-w-[10rem]"
+            />
+            <button
+              type="button"
+              onClick={commit}
+              className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-semibold shrink-0"
+            >
+              Done
+            </button>
+          </div>
+        </td>
+      );
+    }
+
+    if (isScope) {
+      return (
+        <td className={`px-3 py-2 align-middle ${className}`}>
+          <select
+            ref={inputRef as any}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commit(); }
+              if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            }}
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+          >
+            <option value="">Select…</option>
+            {SCOPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </td>
+      );
+    }
+
+    if (isStatus) {
+      return (
+        <td className={`px-3 py-2 align-middle ${className}`}>
+          <SelectWithAddNew
+            value={draft}
+            onChange={val => setDraft(val)}
+            options={STATUS_OPTIONS}
+            placeholder="Select Status…"
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commit(); }
+              if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            }}
+            selectRef={inputRef as any}
+          />
+        </td>
+      );
+    }
+
     return (
       <td className={`px-3 py-2 align-middle ${className}`}>
         <input
-          ref={inputRef}
+          ref={inputRef as any}
           type={isDate ? 'date' : 'text'}
           value={draft}
           onChange={e => setDraft(e.target.value)}
@@ -77,7 +209,7 @@ export function SheetCell({
             if (e.key === 'Enter') { e.preventDefault(); commit(); }
             if (e.key === 'Escape') { e.preventDefault(); cancel(); }
           }}
-          className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white"
+          className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
         />
       </td>
     );

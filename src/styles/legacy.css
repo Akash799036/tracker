@@ -764,6 +764,7 @@ html[data-theme="dark"] .text-slate-700 { color: #cbd5e1 !important; }
 html[data-theme="dark"] .text-slate-600 { color: #b6c2d1 !important; }
 html[data-theme="dark"] .text-slate-500 { color: #94a3b8 !important; }
 html[data-theme="dark"] .text-slate-400 { color: #64748b !important; }
+html[data-theme="dark"] .text-black     { color: #ffffff !important; }
 
 /* Borders */
 html[data-theme="dark"] .border-slate-200 { border-color: #334155 !important; }

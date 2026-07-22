@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import Modal from './Modal';
 import { PALETTE } from './Charts';
-import { statusPillClass } from '@/lib/ui';
+import { statusPillClass, getCleanFileName, getFileUrl } from '@/lib/ui';
 import type { PMProject, PMProjects } from '@/lib/dashboardAggregate';
 
 /** Deterministic accent per PM — matches the dashboard leaderboard. */
@@ -84,15 +84,15 @@ function ProjectCard({ p }: { p: PMProject }) {
               {details.map(([h, v]) => (
                 <div key={h} className="min-w-0">
                   <dt className="text-[10px] uppercase tracking-wider text-slate-500">{h}</dt>
-                  <dd className="truncate text-[12px] text-slate-800" title={String(v)}>
+                  <dd className="truncate text-[12px] text-black" title={String(v)}>
                     {looksLikeUrl(v) ? (
                       <a
-                        href={v}
+                        href={getFileUrl(v)}
                         target="_blank"
                         rel="noreferrer"
                         className="text-brand-600 hover:text-brand-700 hover:underline"
                       >
-                        {v}
+                        {getCleanFileName(v)}
                       </a>
                     ) : (
                       String(v)

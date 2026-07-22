@@ -69,14 +69,14 @@ export default function ProjectTable({
                 <td className="px-4 py-3">
                   <Link href={`/project?id=${encodeURIComponent(p.id)}`} className="flex items-center gap-3" title="Click Me">
                     <div className="avatar" style={{ background: avatarStyle(p.projectName) }}>{initials(p.projectName)}</div>
-                    <div className="font-medium text-slate-900">{p.projectName || 'Untitled'}</div>
+                    <div className="font-medium text-black">{p.projectName || 'Untitled'}</div>
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-600">{p.platform || '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{p.projectManager || '—'}</td>
+                <td className="px-4 py-3 text-black">{p.platform || '—'}</td>
+                <td className="px-4 py-3 text-black">{p.projectManager || '—'}</td>
                 <td className="px-4 py-3"><span className={statusPillClass(p.status)}>{p.status || 'Not Set'}</span></td>
-                <td className="px-4 py-3 text-slate-600">{fmtDate(p.liveDate)}</td>
-                {extraColumns.map(c => <td key={c.label} className="px-4 py-3 text-slate-600">{c.render(p)}</td>)}
+                <td className="px-4 py-3 text-black">{fmtDate(p.liveDate)}</td>
+                {extraColumns.map(c => <td key={c.label} className="px-4 py-3 text-black">{c.render(p)}</td>)}
                 {onDelete && (
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <Link href={`/project?id=${encodeURIComponent(p.id)}`}

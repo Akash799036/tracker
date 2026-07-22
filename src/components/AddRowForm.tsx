@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { isDateHeader } from '@/lib/dateField';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
+import { FileUploadInput } from './FileUploadInput';
+import { DeveloperMultiSelect } from './DeveloperMultiSelect';
 
 // Toolbar button + inline row for adding a new record to a sheet.
 //
@@ -69,10 +72,122 @@ export function AddRowFormRow({
       {headers.map((h, i) => {
         // A date column gets a native calendar picker instead of a free-text box.
         const isDate = isDateHeader(h);
+        const isPlatform = isPlatformHeader(h);
+        const isPM = isPMHeader(h);
+        const isDeveloper = isDeveloperHeader(h);
+        const isStatus = isStatusHeader(h);
+        const isScope = isScopeHeader(h);
+        const isDriveOrScope = isDriveOrScopeHeader(h);
+
+        if (isScope) {
+          return (
+            <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
+              <select
+                ref={i === 0 ? (firstRef as any) : undefined}
+                value={draft[h] ?? ''}
+                onChange={e => setDraft(d => ({ ...d, [h]: e.target.value }))}
+                onKeyDown={onKeyDown}
+                aria-label={h}
+                className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white text-black"
+              >
+                <option value="">Select…</option>
+                {SCOPE_OPTIONS.map(o => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            </td>
+          );
+        }
+
+        if (isDriveOrScope) {
+          return (
+            <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
+              <FileUploadInput
+                value={draft[h] ?? ''}
+                onChange={val => setDraft(d => ({ ...d, [h]: val }))}
+                placeholder={h}
+                className="w-full min-w-[12rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white text-black"
+              />
+            </td>
+          );
+        }
+
+        if (isPlatform) {
+          return (
+            <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
+              <select
+                ref={i === 0 ? (firstRef as any) : undefined}
+                value={draft[h] ?? ''}
+                onChange={e => setDraft(d => ({ ...d, [h]: e.target.value }))}
+                onKeyDown={onKeyDown}
+                aria-label={h}
+                className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white text-black"
+              >
+                <option value="">Select Platform…</option>
+                {PLATFORM_OPTIONS.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </td>
+          );
+        }
+
+        if (isPM) {
+          return (
+            <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
+              <select
+                ref={i === 0 ? (firstRef as any) : undefined}
+                value={draft[h] ?? ''}
+                onChange={e => setDraft(d => ({ ...d, [h]: e.target.value }))}
+                onKeyDown={onKeyDown}
+                aria-label={h}
+                className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white text-black"
+              >
+                <option value="">Select PM…</option>
+                {PM_OPTIONS.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
+              </select>
+            </td>
+          );
+        }
+
+        if (isDeveloper) {
+          return (
+            <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
+              <DeveloperMultiSelect
+                value={draft[h] ?? ''}
+                onChange={val => setDraft(d => ({ ...d, [h]: val }))}
+                className="w-full min-w-[10rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white text-black"
+              />
+            </td>
+          );
+        }
+
+        if (isStatus) {
+          return (
+            <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
+              <select
+                ref={i === 0 ? (firstRef as any) : undefined}
+                value={draft[h] ?? ''}
+                onChange={e => setDraft(d => ({ ...d, [h]: e.target.value }))}
+                onKeyDown={onKeyDown}
+                aria-label={h}
+                className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white text-black"
+              >
+                <option value="">Select Status…</option>
+                {STATUS_OPTIONS.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </td>
+          );
+        }
+
         return (
           <td key={h} className={`px-3 py-2 align-middle ${cellClassName}`}>
             <input
-              ref={i === 0 ? firstRef : undefined}
+              ref={i === 0 ? (firstRef as any) : undefined}
               type={isDate ? 'date' : 'text'}
               value={draft[h] ?? ''}
               onChange={e => setDraft(d => ({ ...d, [h]: e.target.value }))}
@@ -81,7 +196,7 @@ export function AddRowFormRow({
               // hint, so only the text inputs carry the column-name placeholder.
               placeholder={isDate ? undefined : h}
               aria-label={h}
-              className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white"
+              className="w-full min-w-[8rem] px-2 py-1 rounded border border-emerald-200 focus:border-emerald-500 text-sm bg-white text-black"
             />
           </td>
         );

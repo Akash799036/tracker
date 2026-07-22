@@ -1,5 +1,6 @@
 import {
   SHEET_SYNC_STORAGE_KEY,
+  formatHeadingName,
   type AllProjectsData,
   type SheetRow,
   type SheetSyncPageKey,
@@ -235,9 +236,8 @@ const PM_KEYS = ['project manager', 'pm', 'manager'];
 export function normalizePM(raw: unknown): string | null {
   const s = raw == null ? '' : String(raw).trim().replace(/\s+/g, ' ');
   if (!s) return null;
-  // A few cells name two people; treat them as their own bucket rather than
-  // silently crediting the first.
-  return s.replace(/\b\w/g, c => c.toUpperCase()).replace(/\s*\/\s*/g, ' / ');
+  const formatted = formatHeadingName(s);
+  return formatted.replace(/\b\w/g, c => c.toUpperCase()).replace(/\s*\/\s*/g, ' / ');
 }
 
 /**

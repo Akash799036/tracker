@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'rea
 import { useSearchParams } from 'next/navigation';
 import {
   SHEET_SYNC_STORAGE_KEY,
+  formatHeadingName,
   type AllProjectsData,
   type AllProjectsSheet,
   type SheetRowRecord,
@@ -17,6 +18,10 @@ import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { useProjectCredentials } from '@/lib/useProjectCredentials';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
+import { FileUploadInput } from './FileUploadInput';
+import { DeveloperMultiSelect } from './DeveloperMultiSelect';
+import { getCleanFileName, getFileUrl, getScopeFileUrl } from '@/lib/ui';
 import { ReorderableHeader } from './ReorderableHeader';
 import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { SheetCell } from './SheetCell';
@@ -154,7 +159,7 @@ function SheetSyncPanelInner({
 
   // Clickable Project Manager cells → drill-down modal.
   const { renderPMCell, pmModal } = usePMDrilldown(headers);
-  const { renderProjectNameCell, credModal } = useProjectCredentials(headers);
+  const { renderProjectNameCell, credModal } = useProjectCredentials(headers, pageKey, refresh);
 
   // Search spans the sheet's own cells and the custom-field columns, so a row is
   // findable by anything visible on it.
@@ -337,7 +342,7 @@ function SheetSyncPanelInner({
                     : 'border-transparent text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {s.name}
+                {formatHeadingName(s.name)}
                 <span className="ml-2 text-xs text-slate-400">{s.rows.length}</span>
               </button>
             ))}
@@ -428,6 +433,105 @@ function SheetSyncPanelInner({
                           {headers.map(h => {
                             const v = row.cells[h];
                             if (isEditing) {
+                              if (isScopeHeader(h)) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                    <select
+                                      value={editDraft[h] ?? ''}
+                                      onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm text-black bg-white"
+                                    >
+                                      <option value="">Select…</option>
+                                      {SCOPE_OPTIONS.map(o => (
+                                        <option key={o} value={o}>{o}</option>
+                                      ))}
+                                      {editDraft[h] && !SCOPE_OPTIONS.includes(editDraft[h]) && (
+                                        <option value={editDraft[h]}>{editDraft[h]}</option>
+                                      )}
+                                    </select>
+                                  </td>
+                                );
+                              }
+                              if (isDriveOrScopeHeader(h)) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] text-black">
+                                    <FileUploadInput
+                                      value={editDraft[h] ?? ''}
+                                      onChange={val => setEditDraft(d => ({ ...d, [h]: val }))}
+                                      projectName={String(row.cells['Project name'] || row.cells['Project Name'] || '')}
+                                      className="w-full min-w-[12rem] px-2 py-1 rounded border border-slate-300 text-sm text-black bg-white"
+                                    />
+                                  </td>
+                                );
+                              }
+                              if (isPlatformHeader(h)) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                    <select
+                                      value={editDraft[h] ?? ''}
+                                      onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm text-black bg-white"
+                                    >
+                                      <option value="">Select Platform…</option>
+                                      {PLATFORM_OPTIONS.map(p => (
+                                        <option key={p} value={p}>{p}</option>
+                                      ))}
+                                      {editDraft[h] && !PLATFORM_OPTIONS.includes(editDraft[h]) && (
+                                        <option value={editDraft[h]}>{editDraft[h]}</option>
+                                      )}
+                                    </select>
+                                  </td>
+                                );
+                              }
+                              if (isPMHeader(h)) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                    <select
+                                      value={editDraft[h] ?? ''}
+                                      onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm text-black bg-white"
+                                    >
+                                      <option value="">Select PM…</option>
+                                      {PM_OPTIONS.map(pm => (
+                                        <option key={pm} value={pm}>{pm}</option>
+                                      ))}
+                                      {editDraft[h] && !PM_OPTIONS.includes(editDraft[h]) && (
+                                        <option value={editDraft[h]}>{editDraft[h]}</option>
+                                      )}
+                                    </select>
+                                  </td>
+                                );
+                              }
+                              if (isDeveloperHeader(h)) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] text-black">
+                                    <DeveloperMultiSelect
+                                      value={editDraft[h] ?? ''}
+                                      onChange={val => setEditDraft(d => ({ ...d, [h]: val }))}
+                                      className="w-full min-w-[10rem] px-2 py-1 rounded border border-slate-300 text-sm text-black bg-white"
+                                    />
+                                  </td>
+                                );
+                              }
+                              if (isStatusHeader(h)) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                    <select
+                                      value={editDraft[h] ?? ''}
+                                      onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm text-black bg-white"
+                                    >
+                                      <option value="">Select Status…</option>
+                                      {STATUS_OPTIONS.map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                      ))}
+                                      {editDraft[h] && !STATUS_OPTIONS.includes(editDraft[h]) && (
+                                        <option value={editDraft[h]}>{editDraft[h]}</option>
+                                      )}
+                                    </select>
+                                  </td>
+                                );
+                              }
                               return (
                                 <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
                                   <input
@@ -439,6 +543,22 @@ function SheetSyncPanelInner({
                                 </td>
                               );
                             }
+                            const pName = String(row.cells['Project name'] || row.cells['Project Name'] || row.cells['project'] || '').trim();
+                            if (isDriveOrScopeHeader(h) && v) {
+                              const scopeUrl = getScopeFileUrl(v, pName);
+                              const scopeLabel = pName || getCleanFileName(toStr(v));
+                              return (
+                                <SheetCell
+                                  key={h}
+                                  value={toStr(v)}
+                                  header={h}
+                                  onSave={next => saveCell(row, h, next)}
+                                  className="border-b border-slate-100 text-black"
+                                >
+                                  <a href={scopeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 font-medium break-all">{scopeLabel}</a>
+                                </SheetCell>
+                              );
+                            }
                             return (
                               <SheetCell
                                 key={h}
@@ -448,7 +568,7 @@ function SheetSyncPanelInner({
                                 className="border-b border-slate-100 text-black"
                               >
                                 {looksLikeUrl(v)
-                                  ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 break-all">{v}</a>
+                                  ? <a href={getFileUrl(v)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 break-all">{getCleanFileName(toStr(v))}</a>
                                   : renderProjectNameCell(row, h, v, renderPMCell(h, v, toStr(v)))}
                               </SheetCell>
                             );
