@@ -68,7 +68,7 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
           don't flash "Log in" at an already-authenticated user. */}
       {authReady && (
         user ? (
-          <div className="shrink-0 flex items-center gap-2">
+          <div className="shrink-0 flex items-center gap-2 ml-auto">
             <span className="hidden sm:inline text-[12px] text-slate-600">
               <span className="text-slate-400">Signed in as</span>{' '}
               <span className="font-semibold text-slate-800">{user.username}</span>
@@ -85,15 +85,14 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
         ) : (
           <Link
             href="/login"
-            className="shrink-0 h-10 px-3 sm:px-4 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 shadow-soft flex items-center gap-1.5"
+            className="shrink-0 h-10 w-10 rounded-lg bg-brand-600 text-white hover:bg-brand-700 shadow-soft grid place-items-center ml-auto"
             title="Log in to edit"
+            aria-label="Log in to edit"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-            <span className="hidden sm:inline">Log in</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
           </Link>
         )
       )}
-      <div className="ml-auto" />
       <button onClick={onMenu} className="lg:hidden p-2 rounded-lg hover:bg-slate-100 shrink-0" aria-label="Menu">
         <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>

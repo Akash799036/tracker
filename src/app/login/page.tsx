@@ -110,13 +110,16 @@ function LoginInner() {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full inline-flex justify-center h-10 px-4 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[13px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all disabled:opacity-60"
-              >
-                {busy ? 'Signing in…' : 'Sign in'}
-              </button>
+              <div className="flex justify-center">
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="inline-flex justify-center gap-2 h-10 px-5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[13px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all disabled:opacity-60"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                  {busy ? 'Signing in…' : 'Sign in'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
