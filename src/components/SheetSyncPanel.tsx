@@ -49,6 +49,22 @@ function looksLikeUrl(v: unknown): v is string {
   return typeof v === 'string' && /^https?:\/\//i.test(v.trim());
 }
 
+// Columns hidden from a page's display without deleting the underlying data.
+// The values stay in the database (and reappear if a hide is removed); they are
+// simply not rendered as columns here, and — since an export mirrors what's on
+// screen — are left out of this page's exports too. Matched case/space-
+// insensitively so a re-sync that reflows a header ("Start  Date of
+// Maintenance") still hides it. Keyed by pageKey so the same shared panel can
+// drop different columns per page.
+const HIDDEN_COLUMNS: Partial<Record<SheetSyncPageKey, string[]>> = {
+  // Ongoing Projects: hide the maintenance start/end/duration columns.
+  projects: ['Start Date of Maintenance', 'End Date of Maintenance', 'Maintenance Duration'],
+};
+
+function normalizeHeader(h: string): string {
+  return h.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 function SheetSyncPanelInner({
   pageKey,
   title = 'Project Data',
@@ -153,9 +169,32 @@ function SheetSyncPanelInner({
   // applies the stored order, so `headers` matches `sheet.headers` except while
   // a local move is still in flight.
   const EMPTY: string[] = useMemo(() => [], []);
-  const { headers, reorderHeaders, orderError } = useHeaderOrder(
+  const { headers: orderedHeaders, reorderHeaders: reorderAllHeaders, orderError } = useHeaderOrder(
     pageKey, activeSheet, sheet?.headers ?? EMPTY
   );
+
+  // Drop any columns hidden for this page (data is kept in the DB; see
+  // HIDDEN_COLUMNS). Done here so every downstream use of `headers` — the header
+  // row, the cells, the whole-row editor — skips them together.
+  const headers = useMemo(() => {
+    const hidden = HIDDEN_COLUMNS[pageKey];
+    if (!hidden?.length) return orderedHeaders;
+    const hiddenSet = new Set(hidden.map(normalizeHeader));
+    return orderedHeaders.filter(h => !hiddenSet.has(normalizeHeader(h)));
+  }, [orderedHeaders, pageKey]);
+
+  // ReorderableHeader passes indices into the *visible* header list, but the
+  // persisted order is the full list including hidden columns. Translate through
+  // the header labels so a drag moves the right column even when some are hidden.
+  const reorderHeaders = useCallback((from: number, to: number) => {
+    if (headers === orderedHeaders) return reorderAllHeaders(from, to);
+    const fromLabel = headers[from];
+    const toLabel = headers[to];
+    const realFrom = orderedHeaders.indexOf(fromLabel);
+    const realTo = orderedHeaders.indexOf(toLabel);
+    if (realFrom === -1 || realTo === -1) return;
+    return reorderAllHeaders(realFrom, realTo);
+  }, [headers, orderedHeaders, reorderAllHeaders]);
 
   // Clickable Project Manager cells → drill-down modal.
   const { renderPMCell, pmModal } = usePMDrilldown(headers);
