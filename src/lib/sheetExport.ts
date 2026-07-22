@@ -3,7 +3,8 @@
 import * as XLSX from 'xlsx';
 import type { AllProjectsData, AllProjectsSheet, SheetRowRecord } from './allProjectsTypes';
 import { type CustomField, type CustomFieldValue, type ValueMap, vkey } from './useCustomFields';
-import { download } from './ui';
+import { download, getCleanFileName, getFileUrl, getScopeFileUrl } from './ui';
+import { isDriveOrScopeHeader } from './types';
 
 // Shared export routine for every sheet table (SheetSyncPanel and All Projects).
 //
@@ -19,8 +20,35 @@ export type ExportScope = 'tab' | 'page';
 /** A single tab flattened into plain header/row arrays, ready to serialise. */
 type ExportTable = { name: string; headers: string[]; rows: Record<string, unknown>[] };
 
-const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-const cell = (v: unknown) => (v == null ? '' : String(v));
+const toFullUrl = (url: string) => {
+  if (url.startsWith('/')) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}${url}`;
+  }
+  return url;
+};
+
+const esc = (v: unknown) => {
+  if (v == null) return '""';
+  const s = String(v).trim();
+  if (/^(https?:\/\/|\/uploads\/)/i.test(s)) {
+    const fullUrl = toFullUrl(s);
+    const label = getCleanFileName(s);
+    return `"=HYPERLINK(""${fullUrl.replace(/"/g, '""')}"", ""${label.replace(/"/g, '""')}"")"`;
+  }
+  return `"${s.replace(/"/g, '""')}"`;
+};
+
+const cell = (v: unknown) => {
+  if (v == null) return '';
+  const s = String(v).trim();
+  if (/^(https?:\/\/|\/uploads\/)/i.test(s)) {
+    const fullUrl = toFullUrl(s);
+    return { v: fullUrl, t: 's', l: { Target: fullUrl } } as any;
+  }
+  return s;
+};
+
 const slug = (s: string) => s.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
 
 /**
@@ -93,11 +121,23 @@ function writeCsv(tables: ExportTable[], baseName: string, withSheetColumn: bool
   for (const t of tables) for (const h of t.headers) if (!headers.includes(h)) headers.push(h);
 
   const columns = withSheetColumn ? ['Sheet', ...headers] : headers;
-  const lines = [columns.map(esc).join(',')];
+  const lines = [columns.map(h => `"${h.replace(/"/g, '""')}"`).join(',')];
   for (const t of tables) {
     for (const r of t.rows) {
-      const values = headers.map(h => esc(r[h]));
-      lines.push(withSheetColumn ? [esc(t.name), ...values].join(',') : values.join(','));
+      const projectName = String(r['Project name'] || r['Project Name'] || r['project'] || '').trim();
+      const values = headers.map(h => {
+        const v = r[h];
+        if (v == null || v === '') return '""';
+        const s = String(v).trim();
+        if (isDriveOrScopeHeader(h)) {
+          const targetUrl = getScopeFileUrl(s, projectName);
+          const fullUrl = toFullUrl(targetUrl);
+          const label = projectName || getCleanFileName(s);
+          return `"=HYPERLINK(""${fullUrl.replace(/"/g, '""')}"", ""${label.replace(/"/g, '""')}"")"`;
+        }
+        return esc(s);
+      });
+      lines.push(withSheetColumn ? [`"${t.name.replace(/"/g, '""')}"`, ...values].join(',') : values.join(','));
     }
   }
   download(`${baseName}.csv`, lines.join('\n'), 'text/csv');
@@ -107,8 +147,24 @@ function writeXlsx(tables: ExportTable[], baseName: string) {
   const wb = XLSX.utils.book_new();
   const taken = new Set<string>();
   for (const t of tables) {
-    const aoa: string[][] = [t.headers.slice()];
-    for (const r of t.rows) aoa.push(t.headers.map(h => cell(r[h])));
+    const aoa: any[][] = [t.headers.slice()];
+    for (const r of t.rows) {
+      const projectName = String(r['Project name'] || r['Project Name'] || r['project'] || '').trim();
+      aoa.push(
+        t.headers.map(h => {
+          const v = r[h];
+          if (v == null || v === '') return '';
+          const s = String(v).trim();
+          if (isDriveOrScopeHeader(h)) {
+            const targetUrl = getScopeFileUrl(s, projectName);
+            const fullUrl = toFullUrl(targetUrl);
+            const label = projectName || getCleanFileName(s);
+            return { v: label, t: 's', l: { Target: fullUrl } };
+          }
+          return cell(v);
+        })
+      );
+    }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), safeSheetName(t.name, taken));
   }
   XLSX.writeFile(wb, `${baseName}.xlsx`);

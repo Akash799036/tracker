@@ -4,8 +4,10 @@ import { Suspense, useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { useConfirm } from '@/lib/confirm';
 import { useToast } from '@/lib/toast';
-import { PLATFORM_OPTIONS, STATUS_OPTIONS, SSL_OPTIONS, CATEGORY_OPTIONS, type Project } from '@/lib/types';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SSL_OPTIONS, CATEGORY_OPTIONS, SCOPE_OPTIONS, type Project } from '@/lib/types';
 import { avatarStyle, initials } from '@/lib/ui';
+import { FileUploadInput } from '@/components/FileUploadInput';
+import { DeveloperMultiSelect } from '@/components/DeveloperMultiSelect';
 
 const EMPTY: Project = { id: '' };
 
@@ -36,9 +38,9 @@ function ProjectPageInner() {
 
   const update = <K extends keyof Project>(k: K, v: Project[K]) => setForm(f => ({ ...f, [k]: v }));
 
-  const onSave = (e: React.FormEvent) => {
+  const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const saved = upsert({ ...form });
+    const saved = await upsert({ ...form });
     router.push(`/project?id=${encodeURIComponent(saved.id)}`);
     toast.success('Project saved');
   };
@@ -108,8 +110,15 @@ function ProjectPageInner() {
       {/* Overview */}
       <Section title="Overview" subtitle="Name, ownership, and platform.">
         <Field label="Project Name" full><input className="fld" value={form.projectName || ''} onChange={e => update('projectName', e.target.value)} required /></Field>
-        <Field label="Project Manager"><input className="fld" value={form.projectManager || ''} onChange={e => update('projectManager', e.target.value)} /></Field>
-        <Field label="Developer"><input className="fld" value={form.developer || ''} onChange={e => update('developer', e.target.value)} /></Field>
+        <Field label="Project Manager">
+          <select className="fld" value={form.projectManager || ''} onChange={e => update('projectManager', e.target.value)}>
+            <option value="">Select PM…</option>
+            {PM_OPTIONS.map(pm => (
+              <option key={pm} value={pm}>{pm}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Developer"><DeveloperMultiSelect value={form.developer || ''} onChange={v => update('developer', v)} className="fld" /></Field>
         <Field label="Platform">
           <select className="fld" value={form.platform || ''} onChange={e => update('platform', e.target.value)}>
             <option value="">Select…</option>
@@ -150,6 +159,15 @@ function ProjectPageInner() {
         </Field>
         <Field label="Client Email"><input type="email" className="fld" value={form.clientEmail || ''} onChange={e => update('clientEmail', e.target.value)} /></Field>
         <Field label="Client Phone"><input className="fld" value={form.clientPhone || ''} onChange={e => update('clientPhone', e.target.value)} /></Field>
+        <Field label="Document Upload" full>
+          <FileUploadInput
+            value={form.driveLink || ''}
+            onChange={v => update('driveLink', v)}
+            projectName={form.projectName || ''}
+            className="fld"
+            placeholder="Upload CSV, XLSX, PDF, or document file"
+          />
+        </Field>
       </Section>
 
       {/* Maintenance */}
@@ -161,7 +179,12 @@ function ProjectPageInner() {
       {/* Notes */}
       <Section title="Notes" subtitle="Scope and current work-status details.">
         <Field label="Current Update" full><textarea className="fld min-h-[90px] py-2" value={form.currentUpdate || ''} onChange={e => update('currentUpdate', e.target.value)} /></Field>
-        <Field label="Project Scope" full><textarea className="fld min-h-[90px] py-2" value={form.projectScope || ''} onChange={e => update('projectScope', e.target.value)} /></Field>
+        <Field label="Project Scope" full>
+          <select className="fld" value={form.projectScope || ''} onChange={e => update('projectScope', e.target.value)}>
+            <option value="">Select…</option>
+            {SCOPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </Field>
       </Section>
 
       {/* Sticky footer actions */}

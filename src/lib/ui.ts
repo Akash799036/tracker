@@ -63,3 +63,46 @@ export function download(name: string, content: string, type: string) {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+
+export function getCleanFileName(urlOrPath?: unknown): string {
+  if (urlOrPath == null) return '';
+  const s = String(urlOrPath).trim();
+  if (!s) return '';
+
+  // Strip query params and hash
+  const cleanPath = s.split('?')[0].split('#')[0];
+  // Extract filename after last slash or backslash
+  const rawFilename = cleanPath.split(/[/\\]/).pop() || cleanPath;
+
+  // If it's a generic drive/docs link without clean file name
+  if (/drive\.google\.com|docs\.google\.com/i.test(s) && (rawFilename === 'view' || rawFilename === 'edit' || !rawFilename)) {
+    return 'Google Drive Link';
+  }
+
+  // Remove timestamp prefix if present (e.g. 1721648000-Alpha_Medical.pdf)
+  const cleanName = rawFilename.replace(/^\d{10,}[-_]/, '');
+  return cleanName || rawFilename;
+}
+
+export function getFileUrl(val?: unknown): string {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('/')) return s;
+  return `/uploads/${s}`;
+}
+
+export function getScopeFileUrl(val?: unknown, projectName?: string): string {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s) || s.startsWith('/uploads/')) return s;
+
+  const targetName = (projectName || s).trim();
+  if (targetName) {
+    const sanitized = targetName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `/uploads/${sanitized}.pdf`;
+  }
+  return getFileUrl(s);
+}

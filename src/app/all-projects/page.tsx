@@ -8,6 +8,7 @@ import {
   type AllProjectsSheet,
   type SheetRowRecord,
 } from '@/lib/allProjectsTypes';
+import { formatHeadingName } from '@/lib/sheetSync';
 import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useCustomFields, vkey } from '@/lib/useCustomFields';
@@ -21,6 +22,10 @@ import { SheetCell } from '@/components/SheetCell';
 import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
 import { useConfirm } from '@/lib/confirm';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
+import { FileUploadInput } from '@/components/FileUploadInput';
+import { DeveloperMultiSelect } from '@/components/DeveloperMultiSelect';
+import { getCleanFileName, getFileUrl, getScopeFileUrl } from '@/lib/ui';
 import Pagination, { usePagination } from '@/components/Pagination';
 import ExportMenu from '@/components/ExportMenu';
 
@@ -186,7 +191,7 @@ export default function AllProjectsPage() {
 
   // Clickable Project Manager cells → drill-down modal.
   const { renderPMCell, pmModal } = usePMDrilldown(headers);
-  const { renderProjectNameCell, credModal } = useProjectCredentials(headers);
+  const { renderProjectNameCell, credModal } = useProjectCredentials(headers, ALL_PROJECTS_PAGE_KEY, refresh);
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
 
@@ -432,7 +437,7 @@ export default function AllProjectsPage() {
                       : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
                   }`}
                 >
-                  {s.name}
+                  {formatHeadingName(s.name)}
                   <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${s.name === activeSheet ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-500'}`}>{s.rows.length}</span>
                 </button>
               ))}
@@ -528,6 +533,105 @@ export default function AllProjectsPage() {
                             {headers.map(h => {
                               const v = row.cells[h];
                               if (isEditing) {
+                                if (isScopeHeader(h)) {
+                                  return (
+                                    <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                      <select
+                                        value={editDraft[h] ?? ''}
+                                        onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                        className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px] text-black bg-white"
+                                      >
+                                        <option value="">Select…</option>
+                                        {SCOPE_OPTIONS.map(o => (
+                                          <option key={o} value={o}>{o}</option>
+                                        ))}
+                                        {editDraft[h] && !SCOPE_OPTIONS.includes(editDraft[h]) && (
+                                          <option value={editDraft[h]}>{editDraft[h]}</option>
+                                        )}
+                                      </select>
+                                    </td>
+                                  );
+                                }
+                                if (isDriveOrScopeHeader(h)) {
+                                  return (
+                                    <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] text-black">
+                                      <FileUploadInput
+                                        value={editDraft[h] ?? ''}
+                                        onChange={val => setEditDraft(d => ({ ...d, [h]: val }))}
+                                        projectName={String(row.cells['Project name'] || row.cells['Project Name'] || '')}
+                                        className="w-full min-w-[12rem] px-2 py-1 rounded border border-slate-300 text-[12.5px] text-black bg-white"
+                                      />
+                                    </td>
+                                  );
+                                }
+                                if (isPlatformHeader(h)) {
+                                  return (
+                                    <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                      <select
+                                        value={editDraft[h] ?? ''}
+                                        onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                        className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px] text-black bg-white"
+                                      >
+                                        <option value="">Select Platform…</option>
+                                        {PLATFORM_OPTIONS.map(p => (
+                                          <option key={p} value={p}>{p}</option>
+                                        ))}
+                                        {editDraft[h] && !PLATFORM_OPTIONS.includes(editDraft[h]) && (
+                                          <option value={editDraft[h]}>{editDraft[h]}</option>
+                                        )}
+                                      </select>
+                                    </td>
+                                  );
+                                }
+                                if (isPMHeader(h)) {
+                                  return (
+                                    <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                      <select
+                                        value={editDraft[h] ?? ''}
+                                        onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                        className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px] text-black bg-white"
+                                      >
+                                        <option value="">Select PM…</option>
+                                        {PM_OPTIONS.map(pm => (
+                                          <option key={pm} value={pm}>{pm}</option>
+                                        ))}
+                                        {editDraft[h] && !PM_OPTIONS.includes(editDraft[h]) && (
+                                          <option value={editDraft[h]}>{editDraft[h]}</option>
+                                        )}
+                                      </select>
+                                    </td>
+                                  );
+                                }
+                                if (isDeveloperHeader(h)) {
+                                  return (
+                                    <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] text-black">
+                                      <DeveloperMultiSelect
+                                        value={editDraft[h] ?? ''}
+                                        onChange={val => setEditDraft(d => ({ ...d, [h]: val }))}
+                                        className="w-full min-w-[10rem] px-2 py-1 rounded border border-slate-300 text-[12.5px] text-black bg-white"
+                                      />
+                                    </td>
+                                  );
+                                }
+                                if (isStatusHeader(h)) {
+                                  return (
+                                    <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                      <select
+                                        value={editDraft[h] ?? ''}
+                                        onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                        className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-[12.5px] text-black bg-white"
+                                      >
+                                        <option value="">Select Status…</option>
+                                        {STATUS_OPTIONS.map(s => (
+                                          <option key={s} value={s}>{s}</option>
+                                        ))}
+                                        {editDraft[h] && !STATUS_OPTIONS.includes(editDraft[h]) && (
+                                          <option value={editDraft[h]}>{editDraft[h]}</option>
+                                        )}
+                                      </select>
+                                    </td>
+                                  );
+                                }
                                 return (
                                   <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
                                     <input
@@ -539,6 +643,22 @@ export default function AllProjectsPage() {
                                   </td>
                                 );
                               }
+                              const pName = String(row.cells['Project name'] || row.cells['Project Name'] || row.cells['project'] || '').trim();
+                              if (isDriveOrScopeHeader(h) && v) {
+                                const scopeUrl = getScopeFileUrl(v, pName);
+                                const scopeLabel = pName || getCleanFileName(toStr(v));
+                                return (
+                                  <SheetCell
+                                    key={h}
+                                    value={toStr(v)}
+                                    header={h}
+                                    onSave={next => saveCell(row, h, next)}
+                                    className="border-b border-slate-100 text-black font-normal"
+                                  >
+                                    <a href={scopeUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 font-medium break-all">{scopeLabel}</a>
+                                  </SheetCell>
+                                );
+                              }
                               return (
                                 <SheetCell
                                   key={h}
@@ -548,7 +668,7 @@ export default function AllProjectsPage() {
                                   className="border-b border-slate-100 text-black font-normal"
                                 >
                                   {looksLikeUrl(v)
-                                    ? <a href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 break-all">{v}</a>
+                                    ? <a href={getFileUrl(v)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-black underline hover:text-slate-700 break-all">{getCleanFileName(toStr(v))}</a>
                                     : renderProjectNameCell(row, h, v, renderPMCell(h, v, toStr(v)))}
                                 </SheetCell>
                               );

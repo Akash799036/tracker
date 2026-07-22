@@ -27,8 +27,8 @@ type StoreCtx = {
   projects: Project[];
   ready: boolean;
   get: (id: string) => Project | null;
-  upsert: (p: Project) => Project;
-  remove: (id: string) => void;
+  upsert: (p: Project) => Project | Promise<Project>;
+  remove: (id: string) => void | Promise<void>;
   clear: () => void;
   stats: () => Stats;
   storageSize: () => number;
@@ -46,6 +46,79 @@ function csvEscape(v: unknown) {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+function projectToCells(p: Project): Record<string, string> {
+  return {
+    'Project name': p.projectName || '',
+    'Start Date': p.startDate || '',
+    'Platform': p.platform || '',
+    'Figma Approval Date': p.figmaApproval || '',
+    'Html Approval Date': p.htmlApproval || '',
+    'Cms Approval Date': p.cmsApproval || '',
+    'Project Live Date': p.liveDate || '',
+    'Project Manager': p.projectManager || '',
+    'Project Scope': p.projectScope || '',
+    'Google Drive link (All Available Scope)': p.driveLink || '',
+    'Developer': p.developer || '',
+    'Status': p.status || '',
+    'Last Working day': p.lastWorkingDay || '',
+    'Current Update': p.currentUpdate || '',
+    'Domain Name': p.domainName || '',
+    'Hosting': p.hosting || '',
+    'Hosting Detail': p.hostingDetail || '',
+    'Domain': p.domain || '',
+    'SSL Status': p.sslStatus || '',
+    'Admin Access': p.adminAccess || '',
+    'Editor Access': p.editorAccess || '',
+    'Client Email': p.clientEmail || '',
+    'Client Phone': p.clientPhone || '',
+    'Start Date of Maintenance': p.maintenanceStart || '',
+    'End Date of Maintenance': p.maintenanceEnd || '',
+    'Maintenance Duration': p.maintenanceDuration || '',
+    'Project Category': p.projectCategory || '',
+    'Website Link': p.websiteLink || '',
+    'Login URL': p.loginUrl || '',
+    'Username/ID': p.username || '',
+    'Password': p.password || '',
+  };
+}
+
+function cellsToProject(rowUid: string, cells: Record<string, string>): Project {
+  return {
+    id: rowUid,
+    projectName: cells['Project name'] || cells['Project Name'] || cells['project'] || '',
+    startDate: cells['Start Date'] || '',
+    platform: cells['Platform'] || '',
+    figmaApproval: cells['Figma Approval Date'] || cells['Figma Approval'] || '',
+    htmlApproval: cells['Html Approval Date'] || cells['HTML Approval'] || '',
+    cmsApproval: cells['Cms Approval Date'] || cells['CMS Approval'] || '',
+    liveDate: cells['Project Live Date'] || cells['Live Date'] || '',
+    projectManager: cells['Project Manager'] || '',
+    projectScope: cells['Project Scope'] || '',
+    driveLink: cells['Google Drive link (All Available Scope)'] || cells['Drive Link'] || cells['Google Drive link'] || '',
+    developer: cells['Developer'] || '',
+    status: cells['Status'] || '',
+    lastWorkingDay: cells['Last Working day'] || '',
+    currentUpdate: cells['Current Update'] || '',
+    domainName: cells['Domain Name'] || '',
+    hosting: cells['Hosting'] || '',
+    hostingDetail: cells['Hosting Detail'] || '',
+    domain: cells['Domain'] || '',
+    sslStatus: cells['SSL Status'] || '',
+    adminAccess: cells['Admin Access'] || '',
+    editorAccess: cells['Editor Access'] || '',
+    clientEmail: cells['Client Email'] || cells['Email id Provided by client'] || '',
+    clientPhone: cells['Client Phone'] || cells['Phone Numbers Client provided'] || '',
+    maintenanceStart: cells['Start Date of Maintenance'] || cells['Maintenance Start'] || '',
+    maintenanceEnd: cells['End Date of Maintenance'] || cells['Maintenance End'] || '',
+    maintenanceDuration: cells['Maintenance Duration'] || '',
+    projectCategory: cells['Project Category'] || '',
+    websiteLink: cells['Website Link'] || '',
+    loginUrl: cells['Login URL'] || '',
+    username: cells['Username/ID'] || cells['Username'] || '',
+    password: cells['Password'] || '',
+  };
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [ready, setReady] = useState(false);
@@ -61,6 +134,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     setProjects(list);
     setReady(true);
+
+    // Synchronize with live database
+    const syncDatabase = async () => {
+      try {
+        const res = await fetch('/api/sheet-sync/projects');
+        if (!res.ok) return;
+        const data = await res.json();
+        const dbProjects: Project[] = [];
+        for (const sheet of data.sheets || []) {
+          for (const row of sheet.rows || []) {
+            dbProjects.push(cellsToProject(row.uid, row.cells));
+          }
+        }
+        if (dbProjects.length > 0) {
+          setProjects(dbProjects);
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dbProjects)); } catch {}
+        }
+      } catch {}
+    };
+
+    syncDatabase();
+
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) setProjects(loadAll());
     };
@@ -75,22 +170,64 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const get = useCallback((id: string) => projects.find(p => p.id === id) || null, [projects]);
 
-  const upsert = useCallback((p: Project) => {
+  const upsert = useCallback(async (p: Project) => {
     const now = Date.now();
     const list = projects.slice();
-    if (p.id) {
-      const i = list.findIndex(x => x.id === p.id);
-      if (i > -1) { p.createdAt = list[i].createdAt || now; p.updatedAt = now; list[i] = p; }
-      else { p.createdAt = p.createdAt || now; p.updatedAt = now; list.unshift(p); }
-    } else {
-      p.id = uid(); p.createdAt = now; p.updatedAt = now; list.unshift(p);
+    let targetId = p.id;
+    if (!targetId) {
+      targetId = uid();
+      p.id = targetId;
     }
+
+    const i = list.findIndex(x => x.id === targetId);
+    if (i > -1) {
+      p.createdAt = list[i].createdAt || now;
+      p.updatedAt = now;
+      list[i] = p;
+    } else {
+      p.createdAt = p.createdAt || now;
+      p.updatedAt = now;
+      list.unshift(p);
+    }
+
     persist(list);
+
+    // Sync with live database
+    try {
+      const cells = projectToCells(p);
+      if (p.id && i > -1) {
+        await fetch('/api/sheet-rows/projects', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rowUid: p.id, cells }),
+        });
+      } else {
+        const res = await fetch('/api/sheet-rows/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sheetName: 'Projects', cells }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.row?.uid) {
+            p.id = json.row.uid;
+            const updatedList = list.map(item => item.id === targetId ? { ...item, id: json.row.uid } : item);
+            persist(updatedList);
+          }
+        }
+      }
+    } catch {}
+
     return p;
   }, [projects, persist]);
 
-  const remove = useCallback((id: string) => {
+  const remove = useCallback(async (id: string) => {
     persist(projects.filter(p => p.id !== id));
+    try {
+      await fetch(`/api/sheet-rows/projects?uid=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    } catch {}
   }, [projects, persist]);
 
   const clear = useCallback(() => {

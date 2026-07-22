@@ -1,7 +1,9 @@
 'use client';
 import Link from 'next/link';
+import { useGsap } from '@/lib/useGsap';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { gsap } from 'gsap';
 
 // Pages that render a searchable data panel (SheetSyncPanel).
 const SEARCHABLE_PAGES = ['/projects', '/live-projects', '/marketing', '/priority-list', '/maintenance-projects'];
@@ -11,6 +13,7 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const router = useRouter();
   const pathname = usePathname();
+  const headerRef = useGsap('slide', { duration: 0.5 });
 
   useEffect(() => {
     const stored = (typeof window !== 'undefined' && localStorage.getItem('pt-theme')) as 'light' | 'dark' | null;
@@ -35,7 +38,7 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
   };
 
   return (
-    <header className="h-16 bg-white/55 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 sticky top-0 z-20 flex items-center gap-2 sm:gap-3 px-3 sm:px-6">
+    <header ref={headerRef} className="h-16 bg-white/55 backdrop-blur-xl backdrop-saturate-150 border-b border-white/50 sticky top-0 z-20 flex items-center gap-2 sm:gap-3 px-3 sm:px-6">
       <button onClick={toggleTheme} className="theme-toggle order-last shrink-0 h-10 w-10 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white grid place-items-center" aria-label="Toggle theme">
         {theme === 'dark' ? '☀' : '☾'}
       </button>

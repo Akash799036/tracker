@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CustomField } from '@/lib/useCustomFields';
 import { ReorderableHeader } from './ReorderableHeader';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, isPlatformHeader, isPMHeader, isStatusHeader } from '@/lib/types';
 
 // Shared UI for the database-backed custom fields, so every table that renders
 // extra columns gets the same toolbar control, header chip and cell editor.
@@ -147,26 +148,122 @@ export function CustomFieldCell({
   label?: string;
 }) {
   const [editing, setEditing] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
   const isDate = isDateHeader(label);
+  const isPlatform = isPlatformHeader(label);
+  const isPM = isPMHeader(label);
+  const isStatus = isStatusHeader(label);
 
   useEffect(() => {
     if (editing) {
       inputRef.current?.focus();
-      // A date input has no text range to select; only select() a text input.
-      if (!isDate) inputRef.current?.select();
+      // A date/select field has no text range to select; only select() a text input.
+      if (!isDate && !isPlatform && !isPM && !isStatus && 'select' in inputRef.current!) {
+        (inputRef.current as HTMLInputElement).select?.();
+      }
     }
-  }, [editing, isDate]);
+  }, [editing, isDate, isPlatform, isPM, isStatus]);
 
   if (editing) {
     // A date field seeds and compares against the normalised ISO value so a date
     // stored in another format still opens the calendar on the right day and
     // doesn't re-save unchanged.
     const seed = isDate ? toDateInputValue(value) : value;
+
+    if (isPlatform) {
+      return (
+        <td className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
+          <select
+            ref={inputRef as any}
+            defaultValue={seed}
+            key={value}
+            onBlur={e => {
+              const next = e.target.value;
+              if (next !== seed) onSave(next);
+              setEditing(false);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') (e.target as HTMLSelectElement).blur();
+              if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+            }}
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+          >
+            <option value="">Select Platform…</option>
+            {PLATFORM_OPTIONS.map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+            {seed && !PLATFORM_OPTIONS.includes(seed) && (
+              <option value={seed}>{seed}</option>
+            )}
+          </select>
+        </td>
+      );
+    }
+
+    if (isPM) {
+      return (
+        <td className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
+          <select
+            ref={inputRef as any}
+            defaultValue={seed}
+            key={value}
+            onBlur={e => {
+              const next = e.target.value;
+              if (next !== seed) onSave(next);
+              setEditing(false);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') (e.target as HTMLSelectElement).blur();
+              if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+            }}
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+          >
+            <option value="">Select PM…</option>
+            {PM_OPTIONS.map(pm => (
+              <option key={pm} value={pm}>{pm}</option>
+            ))}
+            {seed && !PM_OPTIONS.includes(seed) && (
+              <option value={seed}>{seed}</option>
+            )}
+          </select>
+        </td>
+      );
+    }
+
+    if (isStatus) {
+      return (
+        <td className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
+          <select
+            ref={inputRef as any}
+            defaultValue={seed}
+            key={value}
+            onBlur={e => {
+              const next = e.target.value;
+              if (next !== seed) onSave(next);
+              setEditing(false);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') (e.target as HTMLSelectElement).blur();
+              if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+            }}
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+          >
+            <option value="">Select Status…</option>
+            {STATUS_OPTIONS.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+            {seed && !STATUS_OPTIONS.includes(seed) && (
+              <option value={seed}>{seed}</option>
+            )}
+          </select>
+        </td>
+      );
+    }
+
     return (
       <td className="px-3 py-2 align-middle border-b border-slate-100 bg-indigo-50/20">
         <input
-          ref={inputRef}
+          ref={inputRef as any}
           type={isDate ? 'date' : 'text'}
           // Uncontrolled so typing never round-trips through the network; the key
           // forces a remount when the persisted value changes underneath us.
@@ -182,7 +279,7 @@ export function CustomFieldCell({
             if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
           }}
           placeholder="—"
-          className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white"
+          className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
         />
       </td>
     );

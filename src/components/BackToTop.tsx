@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useGsap } from '@/lib/useGsap';
 
 /** How far down the page the user must be before the button appears. */
 const SHOW_AFTER = 400;
@@ -18,6 +19,7 @@ const SHOW_AFTER = 400;
  */
 export default function BackToTop() {
   const [visible, setVisible] = useState(false);
+  const buttonRef = useGsap<HTMLButtonElement>('fade');
 
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > SHOW_AFTER);
@@ -33,7 +35,7 @@ export default function BackToTop() {
   };
 
   return (
-    <button
+    <button ref={buttonRef}
       type="button"
       onClick={toTop}
       aria-label="Back to top"
