@@ -3,3 +3,10 @@ node_modules
 out
 .env*.local
 next-env.d.ts
+
+# Credentials — never commit service-account keys or other secrets.
+# Google creds are provided at runtime via .env.local (GOOGLE_SERVICE_ACCOUNT_JSON).
+src/constant/google_constant.js
+*-service-account*.json
+*.pem
+*.key
