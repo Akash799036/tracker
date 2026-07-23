@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { encryptCredentials } from './loginCryptoClient';
 
 // Client-side auth state.
 //
@@ -62,10 +63,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     try {
+      // Encrypt the credentials so they don't show as plaintext in the network
+      // Payload tab. If encryption isn't available, fall back to plaintext —
+      // TLS still protects it on the wire. The server accepts either shape.
+      const enc = await encryptCredentials(username, password);
+      const body = enc ? { enc } : { username, password };
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(body),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) return { ok: false, error: json?.error || 'Login failed.' };

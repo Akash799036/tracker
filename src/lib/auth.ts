@@ -5,6 +5,52 @@ import {
   scryptSync,
   timingSafeEqual,
 } from 'node:crypto';
+
+// scrypt cost parameters. N must be a power of two; 2^15 is a sensible interactive
+// cost for a single-user admin login. maxmem is raised to accommodate it.
+const SCRYPT_N = 1 << 15;
+const SCRYPT_KEYLEN = 32;
+const SCRYPT_MAXMEM = 64 * 1024 * 1024;
+
+/**
+ * Format a password + salt into a self-describing scrypt hash string:
+ *   scrypt:<N>:<salt-hex>:<hash-hex>
+ * Storing N and the salt inline means verification needs no other config and
+ * the cost can be raised later without breaking existing hashes.
+ *
+ * The fields are ':'-delimited, NOT '$'-delimited: Next's env loader treats a
+ * '$' in a .env value as a variable reference and silently expands it away, so
+ * a '$'-delimited hash loads as garbage. ':' is safe in a .env value.
+ */
+export function hashPassword(password: string, salt?: Buffer): string {
+  const s = salt ?? randomBytes(16);
+  const dk = scryptSync(password, s, SCRYPT_KEYLEN, { N: SCRYPT_N, maxmem: SCRYPT_MAXMEM });
+  return `scrypt:${SCRYPT_N}:${s.toString('hex')}:${dk.toString('hex')}`;
+}
+
+/** Verify a plaintext password against a `scrypt:N:salt:hash` string, in constant time. */
+function verifyAgainstHash(password: string, stored: string): boolean {
+  const parts = stored.split(':');
+  if (parts.length !== 4 || parts[0] !== 'scrypt') return false;
+  const N = Number(parts[1]);
+  if (!Number.isInteger(N) || N < 2 || (N & (N - 1)) !== 0) return false;
+  let salt: Buffer;
+  let expected: Buffer;
+  try {
+    salt = Buffer.from(parts[2], 'hex');
+    expected = Buffer.from(parts[3], 'hex');
+  } catch {
+    return false;
+  }
+  if (salt.length === 0 || expected.length === 0) return false;
+  let actual: Buffer;
+  try {
+    actual = scryptSync(password, salt, expected.length, { N, maxmem: SCRYPT_MAXMEM });
+  } catch {
+    return false;
+  }
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
 import { cookies } from 'next/headers';
 
 // Server-only authentication for the tracker.
@@ -15,11 +61,25 @@ import { cookies } from 'next/headers';
 // cookie itself is the session, and its HMAC signature is what makes it
 // unforgeable.
 //
-//   AUTH_USERNAME   — the login name (default 'admin')
-//   AUTH_PASSWORD   — the login password (plain; compared in constant time)
-//   AUTH_SECRET     — HMAC key for signing the session cookie. REQUIRED in
-//                     production; a missing secret disables login rather than
-//                     silently signing with a guessable key.
+//   AUTH_USERNAME       — the login name (default 'admin')
+//   AUTH_PASSWORD_HASH  — the login password as a salted scrypt hash, so the
+//                         real password is never stored in readable form (in
+//                         .env, logs, or a memory dump). Preferred. Generate
+//                         one with `node scripts/hash-password.mjs`.
+//   AUTH_PASSWORD       — legacy plaintext password. Still supported as a
+//                         fallback when no hash is set, but discouraged: the
+//                         plaintext value is visible to anyone who can read the
+//                         environment. Prefer AUTH_PASSWORD_HASH.
+//   AUTH_SECRET         — HMAC key for signing the session cookie. REQUIRED in
+//                         production; a missing secret disables login rather
+//                         than silently signing with a guessable key.
+//
+// Note on transport: the login POST is protected end-to-end by HTTPS/TLS in
+// production. That, not any app-level encryption of the request body, is what
+// keeps credentials off the wire — so we deliberately don't add browser-side
+// encryption (which would need to ship its key to the browser and add no real
+// protection over TLS). What we DO add is that the password is never held at
+// rest in plaintext on the server: it's stored and compared as a scrypt hash.
 //
 // The security boundary is the API: every data-mutating request calls
 // requireAuth(), so hiding the edit UI on the client is only cosmetic.
@@ -39,11 +99,19 @@ function authSecret(): string | null {
   return s && s.trim() ? s : null;
 }
 
-function configuredUser(): { username: string; password: string } | null {
+// The configured credential: a username plus either a scrypt hash (preferred)
+// or a legacy plaintext password. Login is disabled if neither is present.
+type CredentialConfig =
+  | { username: string; kind: 'hash'; hash: string }
+  | { username: string; kind: 'plain'; password: string };
+
+function configuredUser(): CredentialConfig | null {
   const username = (process.env.AUTH_USERNAME || 'admin').trim();
+  const hash = (process.env.AUTH_PASSWORD_HASH || '').trim();
+  if (hash) return { username, kind: 'hash', hash };
   const password = process.env.AUTH_PASSWORD || '';
-  if (!password) return null; // no password configured → login is disabled
-  return { username, password };
+  if (password) return { username, kind: 'plain', password };
+  return null; // no password configured → login is disabled
 }
 
 /** True when the server is configured well enough for anyone to log in. */
@@ -66,7 +134,9 @@ export function verifyCredentials(username: string, password: string): boolean {
   // Evaluate both comparisons regardless, so timing doesn't reveal whether it
   // was the username or the password that was wrong.
   const okUser = safeEqual(username.trim(), cfg.username);
-  const okPass = safeEqual(password, cfg.password);
+  const okPass = cfg.kind === 'hash'
+    ? verifyAgainstHash(password, cfg.hash)
+    : safeEqual(password, cfg.password);
   return okUser && okPass;
 }
 

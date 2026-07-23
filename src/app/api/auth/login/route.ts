@@ -4,11 +4,19 @@ import {
   sessionCookieFor,
   verifyCredentials,
 } from '@/lib/auth';
+import { decryptLoginBlob } from '@/lib/loginCrypto';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// POST /api/auth/login  { username, password } -> 200 { user } + session cookie
+// POST /api/auth/login -> 200 { user } + session cookie
+//
+// Accepts either:
+//   { enc: "<base64 RSA-OAEP ciphertext of JSON {username,password}>" }  (preferred)
+//   { username, password }                                              (legacy plaintext)
+// The `enc` form keeps the credentials out of the network Payload tab (see
+// src/lib/loginCrypto.ts — cosmetic, TLS is the real transport security). The
+// plaintext form stays supported so older clients / tooling keep working.
 //
 // A generic "invalid credentials" message on any failure so we don't reveal
 // whether the username or the password was the wrong one.
@@ -21,8 +29,30 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({} as any));
-  const username = String(body?.username ?? '');
-  const password = String(body?.password ?? '');
+
+  let username = '';
+  let password = '';
+  if (typeof body?.enc === 'string' && body.enc) {
+    // Encrypted payload: decrypt then parse the inner {username,password}.
+    const decrypted = decryptLoginBlob(body.enc);
+    if (decrypted === null) {
+      // Could be a stale key after a server restart — ask the client to retry.
+      return NextResponse.json(
+        { error: 'Could not read the encrypted credentials. Please try again.' },
+        { status: 400 }
+      );
+    }
+    try {
+      const inner = JSON.parse(decrypted);
+      username = String(inner?.username ?? '');
+      password = String(inner?.password ?? '');
+    } catch {
+      return NextResponse.json({ error: 'Malformed credentials.' }, { status: 400 });
+    }
+  } else {
+    username = String(body?.username ?? '');
+    password = String(body?.password ?? '');
+  }
 
   if (!username || !password) {
     return NextResponse.json({ error: 'Username and password are required.' }, { status: 400 });
