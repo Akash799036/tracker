@@ -670,7 +670,17 @@ export default function AllProjectsPage() {
                           </tr>
                         );
                       })}
-                      {filteredRows.length === 0 && (
+                      {addingRow && (
+                        <AddRowFormRow
+                          headers={headers}
+                          trailingCols={customFields.length}
+                          busy={rowBusy}
+                          onSave={addRow}
+                          onCancel={() => setAddingRow(false)}
+                          cellClassName="border-b border-slate-100"
+                        />
+                      )}
+                      {filteredRows.length === 0 && !addingRow && (
                         <tr>
                           <td colSpan={(headers.length || 1) + (canEdit ? 1 : 0)} className="px-3 py-10 text-center text-slate-500 italic">
                             {sheet.rows.length === 0 ? 'No rows yet.' : 'No matching rows.'}

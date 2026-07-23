@@ -403,6 +403,10 @@ function SheetSyncPanelInner({
   // Rows across every tab — shown against the whole-page export option.
   const pageTotalRows = data?.sheets.reduce((n, s) => n + s.rows.length, 0) ?? 0;
 
+  const totalRows = sheet?.rows.length ?? 0;
+  // Rows across every tab — shown against the whole-page export option.
+  const pageTotalRows = data?.sheets.reduce((n, s) => n + s.rows.length, 0) ?? 0;
+
   return (
     <section className="space-y-3 bg-white rounded-xl border border-slate-200 shadow-card p-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -733,7 +737,17 @@ function SheetSyncPanelInner({
                         </tr>
                       );
                     })}
-                    {filteredRows.length === 0 && (
+                    {addingRow && (
+                      <AddRowFormRow
+                        headers={headers}
+                        trailingCols={customFields.length}
+                        busy={rowBusy}
+                        onSave={addRow}
+                        onCancel={() => setAddingRow(false)}
+                        cellClassName="border-b border-slate-100"
+                      />
+                    )}
+                    {filteredRows.length === 0 && !addingRow && (
                       <tr>
                         <td colSpan={(headers.length || 1) + (canEdit ? 1 : 0)} className="px-3 py-6 text-center text-slate-500">
                           {totalRows === 0 ? 'No rows yet.' : 'No matching rows.'}

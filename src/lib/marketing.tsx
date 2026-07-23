@@ -105,6 +105,27 @@ export function MarketingProvider({ children }: { children: React.ReactNode }) {
     }
     setTasks(list);
     setReady(true);
+
+    // Synchronize with live database
+    const syncDatabase = async () => {
+      try {
+        const res = await fetch('/api/sheet-sync/marketing');
+        if (!res.ok) return;
+        const data = await res.json();
+        const dbTasks: MarketingTask[] = [];
+        for (const sheet of data.sheets || []) {
+          for (const row of sheet.rows || []) {
+            dbTasks.push(cellsToTask(row.uid, row.cells));
+          }
+        }
+        if (dbTasks.length > 0) {
+          setTasks(dbTasks);
+          try { localStorage.setItem(KEY, JSON.stringify(dbTasks)); } catch {}
+        }
+      } catch {}
+    };
+
+    syncDatabase();
   }, []);
 
   // Pull the marketing sheet from the live database — only when the Marketing

@@ -158,6 +158,7 @@ export async function syncPageData(conn, pageKey, sheets, syncedAt) {
 
     for (let pos = 0; pos < sheets.length; pos++) {
       const sheet = sheets[pos];
+<<<<<<< HEAD
 
       // Columns a user added through the app (e.g. the credentials popup's
       // Login URL / Password fields, absent from the workbook) live in this
@@ -175,6 +176,9 @@ export async function syncPageData(conn, pageKey, sheets, syncedAt) {
         ...priorHeaders.filter(h => h && !incoming.has(h)),
       ];
       const headersJson = JSON.stringify(mergedHeaders);
+=======
+      const headersJson = JSON.stringify(sheet.headers);
+>>>>>>> b668aedf6cef9b4a1a880ce98828c332086e3a2a
 
       // 1. Upsert the tab, keeping its id so tab_id references survive.
       await conn.execute(
