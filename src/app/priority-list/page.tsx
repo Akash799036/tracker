@@ -1,11 +1,14 @@
 'use client';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import PageLoader from '@/components/PageLoader';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 export default function PriorityList() {
-  const { projects, ready } = useStore();
+  const { projects, ready, syncing, ensureSynced } = useStore();
+  // Pull project data only now that the user is on a page that shows it.
+  useEffect(() => { ensureSynced(); }, [ensureSynced]);
   const syncedTotal = useSyncedTotal('priority-list');
   const rows = useMemo(() => {
     const now = Date.now();
@@ -37,7 +40,7 @@ export default function PriorityList() {
     return { total: rows.length, launchingThisWeek, launchingSoon };
   }, [rows]);
 
-  if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
+  if (!ready || (syncing && projects.length === 0)) return <PageLoader />;
 
   return (
     <div className="space-y-5">

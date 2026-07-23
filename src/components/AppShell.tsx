@@ -6,21 +6,18 @@ import BackToTop from './BackToTop';
 import { useStore } from '@/lib/store';
 import { ConfirmProvider } from '@/lib/confirm';
 import { ToastProvider } from '@/lib/toast';
-import { SHEET_SYNC_DONE_EVENT } from './AutoSheetSync';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { ready } = useStore();
-  const [syncDone, setSyncDone] = useState(false);
   const [hidden, setHidden] = useState(false);
 
-  useEffect(() => {
-    const onDone = () => setSyncDone(true);
-    window.addEventListener(SHEET_SYNC_DONE_EVENT, onDone);
-    return () => window.removeEventListener(SHEET_SYNC_DONE_EVENT, onDone);
-  }, []);
-
-  const done = ready && syncDone;
+  // The intro overlay is only a "the shell is ready to interact with" splash. It
+  // dismisses as soon as the local cache has been read — it no longer waits for
+  // every page's data to be fetched up front. Each page pulls its own data on
+  // demand (with its own PageLoader) when the user navigates to it, so nothing
+  // is fetched for pages the user never opens.
+  const done = ready;
 
   useEffect(() => {
     if (!done) return;

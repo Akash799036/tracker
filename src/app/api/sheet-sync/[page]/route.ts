@@ -2,6 +2,43 @@ import { NextResponse } from 'next/server';
 import { PAGE_SHEET_IDS, isValidPageKey, type AllProjectsData } from '@/lib/sheetSync';
 import type { RawSheet } from '@/lib/allProjectsTypes';
 import { getPageData, replacePageData } from '@/lib/sheetData';
+import { getSessionUser } from '@/lib/auth';
+import { decryptField, isEncrypted } from '@/lib/fieldCrypto';
+import { WEBSITE_DELIVERY_PAGE_KEY, WEBSITE_DELIVERY_FIELDS } from '@/lib/websiteDeliveryForm';
+
+// Cell keys of the Website Delivery form's encrypted fields.
+const WEBSITE_DELIVERY_ENC_KEYS = new Set(
+  WEBSITE_DELIVERY_FIELDS.filter(f => f.encrypted).map(f => f.name)
+);
+
+/**
+ * Reveal or mask the encrypted columns of the Website Delivery page.
+ *
+ * The GET below is public, so an anonymous caller must never receive the stored
+ * secret — encrypted cells come back masked. A signed-in caller (who may already
+ * edit/delete) gets the decrypted value so the table is usable. Other pages and
+ * non-encrypted cells are untouched.
+ */
+function revealEncryptedCells(pageKey: string, data: AllProjectsData, authed: boolean): AllProjectsData {
+  if (pageKey !== WEBSITE_DELIVERY_PAGE_KEY) return data;
+  return {
+    ...data,
+    sheets: data.sheets.map(sheet => ({
+      ...sheet,
+      rows: sheet.rows.map(row => {
+        let changed = false;
+        const cells = { ...row.cells };
+        for (const key of WEBSITE_DELIVERY_ENC_KEYS) {
+          const v = cells[key];
+          if (!isEncrypted(v)) continue;
+          cells[key] = authed ? decryptField(String(v)) : '••••••••';
+          changed = true;
+        }
+        return changed ? { ...row, cells } : row;
+      }),
+    })),
+  };
+}
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -49,8 +86,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
   const refresh = url.searchParams.get('refresh') === '1' || url.searchParams.get('source') === 'google';
 
   // This page is fully public and unauthenticated: every caller gets every row,
-  // including credential columns. Both return paths below go through `serve`.
-  const serve = (data: AllProjectsData) => NextResponse.json(data);
+  // including credential columns. The one exception is the Website Delivery
+  // form's encrypted fields, which are decrypted only for a signed-in caller and
+  // masked for everyone else. Both return paths below go through `serve`.
+  const authed = (await getSessionUser()) !== null;
+  const serve = (data: AllProjectsData) =>
+    NextResponse.json(revealEncryptedCells(pageKey, data, authed));
 
   try {
     if (refresh) {

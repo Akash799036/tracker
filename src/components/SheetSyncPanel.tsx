@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   SHEET_SYNC_STORAGE_KEY,
   formatHeadingName,
@@ -11,7 +11,6 @@ import {
   type SheetSyncPageKey,
 } from '@/lib/sheetSync';
 import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
-import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useConfirm } from '@/lib/confirm';
 import { useAuth } from '@/lib/useAuth';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
@@ -19,14 +18,13 @@ import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { useProjectCredentials } from '@/lib/useProjectCredentials';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
-import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, COMPLETED_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isCompletedHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
 import { FileUploadInput } from './FileUploadInput';
 import { DeveloperMultiSelect } from './DeveloperMultiSelect';
 import { getCleanFileName, getFileUrl, getScopeFileUrl } from '@/lib/ui';
 import { ReorderableHeader } from './ReorderableHeader';
-import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from './CustomFieldControls';
 import { SheetCell } from './SheetCell';
-import { AddRowButton, AddRowFormRow } from './AddRowForm';
+import PageLoader from './PageLoader';
 import Pagination, { usePagination } from './Pagination';
 import ExportMenu from './ExportMenu';
 
@@ -75,28 +73,27 @@ function SheetSyncPanelInner({
 }) {
   const storageKey = SHEET_SYNC_STORAGE_KEY(pageKey);
   const searchParams = useSearchParams();
+  const router = useRouter();
   const confirm = useConfirm();
   const { canEdit } = useAuth();
+
+  // On the Live Projects page, "add a project" means opening the full Website
+  // Delivery form rather than dropping a blank inline row into the sheet. Other
+  // sheet pages keep the quick inline-add.
+  const addOpensForm = pageKey === 'live-projects';
   const [data, setData] = useState<AllProjectsData | null>(null);
   const [ready, setReady] = useState(false);
+  // Stays true until the first API pull settles, so a fresh visit shows a loader
+  // instead of the "No data loaded yet" empty state while rows are on the way.
+  const [loading, setLoading] = useState(true);
   const [activeSheet, setActiveSheet] = useState<string>('');
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
-  const [addingRow, setAddingRow] = useState(false);
   const [rowBusy, setRowBusy] = useState(false);
-
-  // Custom fields (extra columns) for the active sheet, backed by the database.
-  const {
-    fields: customFields,
-    values: customValues,
-    error: customError,
-    addField: addCustomField,
-    deleteField: deleteCustomField,
-    setValue: saveCustomValue,
-    reorderFields: reorderCustomFields,
-  } = useCustomFields(pageKey, activeSheet);
+  const [adding, setAdding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
   // Also makes a plain mouse wheel scroll the sheet sideways.
@@ -113,9 +110,48 @@ function SheetSyncPanelInner({
         setActiveSheet(prev =>
           prev && json.sheets.some(s => s.name === prev) ? prev : (json.sheets[0]?.name || '')
         );
-        try { localStorage.setItem(storageKey, JSON.stringify(json)); } catch {}
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(json));
+          // Tell same-tab listeners (PM drill-down index, useSyncedTotal) that
+          // this page's cache changed — a 'storage' event only fires cross-tab.
+          window.dispatchEvent(new CustomEvent('sheet-sync:updated', { detail: { pageKey } }));
+        } catch {}
       }
     } catch { /* keep whatever is on screen */ }
+  }, [pageKey, storageKey]);
+
+  /**
+   * Manually re-pull the page's Google Sheet. Unlike `refresh` (which reads the
+   * stored rows), this hits `?refresh=1`, so the server re-fetches the source
+   * workbook, reconciles it into the database — preserving row identity and any
+   * user edits — and returns the merged result. This is how an edit made
+   * directly in the Google Sheet is reflected on the page.
+   */
+  const syncFromGoogle = useCallback(async () => {
+    setSyncing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/sheet-sync/${pageKey}?refresh=1`, { cache: 'no-store' });
+      const json = (await res.json().catch(() => null)) as AllProjectsData | { error?: string } | null;
+      if (!res.ok) {
+        throw new Error((json as { error?: string })?.error || 'could not sync from Google Sheets');
+      }
+      const data = json as AllProjectsData | null;
+      if (data && data.sheets?.length) {
+        setData(data);
+        setActiveSheet(prev =>
+          prev && data.sheets.some(s => s.name === prev) ? prev : (data.sheets[0]?.name || '')
+        );
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(data));
+          window.dispatchEvent(new CustomEvent('sheet-sync:updated', { detail: { pageKey } }));
+        } catch {}
+      }
+    } catch (e: any) {
+      setError(e?.message || 'could not sync from Google Sheets');
+    } finally {
+      setSyncing(false);
+    }
   }, [pageKey, storageKey]);
 
   useEffect(() => {
@@ -133,11 +169,13 @@ function SheetSyncPanelInner({
     apply(loadCached(storageKey));
     setReady(true);
 
-    // 2) Fetch from the API so the panel doesn't depend on AutoSheetSync winning
-    //    the mount race. This populates data even on the very first visit.
-    refresh();
+    // 2) Fetch this page's rows from the API on mount. This is the page's own
+    //    on-demand load: its data is pulled only when the user is on it, not up
+    //    front for every page. Drop the loader once it settles, whatever the
+    //    outcome.
+    refresh().finally(() => { if (!cancelled) setLoading(false); });
 
-    // 3) Re-read cache when AutoSheetSync (or another tab) refreshes it.
+    // 3) Re-read cache when a sheet-sync:updated event or another tab refreshes it.
     const onUpdated = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail && detail.pageKey && detail.pageKey !== pageKey) return;
@@ -202,17 +240,16 @@ function SheetSyncPanelInner({
   const { renderPMCell, pmModal } = usePMDrilldown(headers);
   const { renderProjectNameCell, credModal } = useProjectCredentials(headers, pageKey, refresh);
 
-  // Search spans the sheet's own cells and the custom-field columns, so a row is
-  // findable by anything visible on it.
+  // Search spans the sheet's own cells, so a row is findable by anything visible
+  // on it.
   const filteredRows = useMemo(() => {
     const rows = sheet?.rows ?? [];
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(r => {
-      if (Object.values(r.cells).some(v => toStr(v).toLowerCase().includes(q))) return true;
-      return customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q));
-    });
-  }, [sheet, query, customFields, customValues]);
+    return rows.filter(r =>
+      Object.values(r.cells).some(v => toStr(v).toLowerCase().includes(q))
+    );
+  }, [sheet, query]);
 
   // Cap the table at 20 rows; searching or switching sheets returns to page 1.
   const { page, setPage, totalPages, pageRows, from, to } = usePagination(
@@ -287,26 +324,38 @@ function SheetSyncPanelInner({
     }
   };
 
-  const addRow = async (cells: Record<string, string>) => {
-    if (!sheet) return false;
-    setRowBusy(true);
+  // Add a blank project row to the active tab, then open it inline for editing
+  // so the user can fill in the project name and the rest. The row lands at the
+  // bottom (see insertUserRow), so jump to the last page to reveal it.
+  const addRow = async () => {
+    if (!sheet || adding) return;
+    setAdding(true);
     setError(null);
     try {
       const res = await fetch(`/api/sheet-rows/${pageKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetName: sheet.name, cells }),
+        body: JSON.stringify({ sheetName: sheet.name, cells: {} }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || 'could not add that row');
+      if (!res.ok) throw new Error(json?.error || 'could not add a new project');
+      // Clear the search first so the new (empty) row isn't filtered out, then
+      // reveal it: it lands at the bottom, and usePagination clamps an
+      // over-large page number to the last page.
+      setQuery('');
       await refresh();
-      setAddingRow(false);
-      return true;
+      const newRow = json?.row as SheetRowRecord | undefined;
+      if (newRow?.uid) {
+        setEditingUid(newRow.uid);
+        const draft: Record<string, string> = {};
+        for (const h of sheet.headers) draft[h] = '';
+        setEditDraft(draft);
+      }
+      setPage(Number.MAX_SAFE_INTEGER);
     } catch (e: any) {
-      setError(e?.message || 'could not add that row');
-      return false;
+      setError(e?.message || 'could not add a new project');
     } finally {
-      setRowBusy(false);
+      setAdding(false);
     }
   };
 
@@ -342,10 +391,13 @@ function SheetSyncPanelInner({
   // the page; see src/lib/sheetExport.ts.
   const exportData = (format: ExportFormat, scope: ExportScope) =>
     exportSheetData({
-      format, scope, pageKey, data, sheet, headers, filteredRows, customFields, customValues,
+      format, scope, pageKey, data, sheet, headers, filteredRows,
     });
 
   if (!ready) return null;
+  // Fresh visit with nothing cached yet: spin until the first pull lands rather
+  // than flashing the empty "No data loaded yet" state.
+  if (loading && !data) return <PageLoader />;
 
   const totalRows = sheet?.rows.length ?? 0;
   // Rows across every tab — shown against the whole-page export option.
@@ -364,9 +416,9 @@ function SheetSyncPanelInner({
         </div>
       </div>
 
-      {(error || customError || orderError) && (
+      {(error || orderError) && (
         <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700">
-          {error || customError || orderError}
+          {error || orderError}
         </div>
       )}
 
@@ -423,6 +475,19 @@ function SheetSyncPanelInner({
                   <div className="text-xs text-slate-500 whitespace-nowrap">
                     {filteredRows.length} of {totalRows} rows
                   </div>
+                  {/* Manual Sync — re-pulls the source Google Sheet so edits made
+                      directly in the sheet show up here. Available to everyone,
+                      like search/export; it changes no data on the sheet. */}
+                  <button
+                    type="button"
+                    onClick={syncFromGoogle}
+                    disabled={syncing}
+                    title="Pull the latest from the Google Sheet"
+                    className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm disabled:opacity-60"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={syncing ? 'animate-spin' : ''}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    {syncing ? 'Syncing…' : 'Sync'}
+                  </button>
                   <ExportMenu
                     onExport={exportData}
                     activeSheetName={sheet.name}
@@ -430,8 +495,23 @@ function SheetSyncPanelInner({
                     filteredCount={filteredRows.length}
                     totalCount={pageTotalRows}
                   />
-                  <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
-                  <AddColumnButton onAdd={addCustomField} disabled={rowBusy} />
+                  {/* On Live Projects, "Add Project" opens the Website Delivery
+                      form and is available to EVERYONE (signed-out included) —
+                      the form page is open to all. On other pages the button does
+                      a blank inline add, which is an edit action, so it stays
+                      hidden for signed-out (read-only) users. */}
+                  {(addOpensForm || canEdit) && (
+                    <button
+                      type="button"
+                      onClick={addOpensForm ? () => router.push('/website-delivery-2') : addRow}
+                      disabled={adding}
+                      title={addOpensForm ? 'Open the project delivery form' : 'Add a new project row to this sheet'}
+                      className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-emerald-600 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm disabled:opacity-60"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      {addOpensForm ? 'Add Project' : (adding ? 'Adding…' : 'New Project')}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -450,16 +530,6 @@ function SheetSyncPanelInner({
                         >
                           {h}
                         </ReorderableHeader>
-                      ))}
-                      {customFields.map((f, i) => (
-                        <CustomFieldHeader
-                          key={`cf-${f.id}`}
-                          field={f}
-                          index={i}
-                          count={customFields.length}
-                          onMove={reorderCustomFields}
-                          onDelete={deleteCustomField}
-                        />
                       ))}
                       {/* The Actions column holds only edit/delete controls, so
                           it disappears entirely for signed-out (read-only) users. */}
@@ -577,6 +647,25 @@ function SheetSyncPanelInner({
                                   </td>
                                 );
                               }
+                              if (isCompletedHeader(h)) {
+                                return (
+                                  <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
+                                    <select
+                                      value={editDraft[h] ?? ''}
+                                      onChange={e => setEditDraft(d => ({ ...d, [h]: e.target.value }))}
+                                      className="w-full min-w-[8rem] px-2 py-1 rounded border border-slate-300 text-sm text-black bg-white"
+                                    >
+                                      <option value="">Select…</option>
+                                      {COMPLETED_OPTIONS.map(o => (
+                                        <option key={o} value={o}>{o}</option>
+                                      ))}
+                                      {editDraft[h] && !COMPLETED_OPTIONS.includes(editDraft[h]) && (
+                                        <option value={editDraft[h]}>{editDraft[h]}</option>
+                                      )}
+                                    </select>
+                                  </td>
+                                );
+                              }
                               return (
                                 <td key={h} className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap max-w-[28rem] truncate text-black">
                                   <input
@@ -618,14 +707,6 @@ function SheetSyncPanelInner({
                               </SheetCell>
                             );
                           })}
-                          {customFields.map(f => (
-                            <CustomFieldCell
-                              key={`cf-${f.id}`}
-                              value={customValues[vkey(f.id, row.uid)] ?? ''}
-                              label={f.label}
-                              onSave={val => saveCustomValue(f.id, row.uid, val)}
-                            />
-                          ))}
                           {canEdit && (
                             <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
                               {isEditing ? (
@@ -652,20 +733,10 @@ function SheetSyncPanelInner({
                         </tr>
                       );
                     })}
-                    {addingRow && (
-                      <AddRowFormRow
-                        headers={headers}
-                        trailingCols={customFields.length}
-                        busy={rowBusy}
-                        onSave={addRow}
-                        onCancel={() => setAddingRow(false)}
-                        cellClassName="border-b border-slate-100"
-                      />
-                    )}
-                    {filteredRows.length === 0 && !addingRow && (
+                    {filteredRows.length === 0 && (
                       <tr>
-                        <td colSpan={(headers.length || 1) + customFields.length + (canEdit ? 1 : 0)} className="px-3 py-6 text-center text-slate-500">
-                          {totalRows === 0 ? (canEdit ? 'No rows yet. Use Add Row to create one.' : 'No rows yet.') : 'No matching rows.'}
+                        <td colSpan={(headers.length || 1) + (canEdit ? 1 : 0)} className="px-3 py-6 text-center text-slate-500">
+                          {totalRows === 0 ? 'No rows yet.' : 'No matching rows.'}
                         </td>
                       </tr>
                     )}

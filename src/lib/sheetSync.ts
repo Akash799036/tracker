@@ -9,7 +9,11 @@ export type SheetSyncPageKey =
   | 'maintenance-projects'
   | 'marketing'
   | 'all-projects'
-  | 'dashboard';
+  | 'dashboard'
+  // Submission-only form: it never pulls FROM a sheet, it only receives rows
+  // written via /api/sheet-rows. It's registered here so isValidPageKey accepts
+  // it; its "sheet ID" is a placeholder used only if someone explicitly syncs.
+  | 'website-delivery-2';
 
 // v2: rows became { uid, origin, cells } instead of a bare cell map. Bumping the
 // key drops v1 payloads rather than letting the table read cells off the wrong
@@ -27,6 +31,8 @@ export const PAGE_SHEET_IDS: Record<SheetSyncPageKey, string> = {
   'marketing':            process.env.MARKETING_SHEET_ID            || '1RWGRBD9mivKY9JAWLCzLK1aR8NMUgxeyVRv06YW3_xs',
   'all-projects':         ALL_PROJECTS_FALLBACK,
   'dashboard':            process.env.DASHBOARD_SHEET_ID            || ALL_PROJECTS_FALLBACK,
+  // Placeholder — this page is submission-only and does not sync from a sheet.
+  'website-delivery-2':   process.env.WEBSITE_DELIVERY_2_SHEET_ID   || '',
 };
 
 export function isValidPageKey(v: string): v is SheetSyncPageKey {

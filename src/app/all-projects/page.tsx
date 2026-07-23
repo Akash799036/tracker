@@ -11,15 +11,13 @@ import {
 import { formatHeadingName } from '@/lib/sheetSync';
 import { exportSheetData, type ExportFormat, type ExportScope } from '@/lib/sheetExport';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
-import { useCustomFields, vkey } from '@/lib/useCustomFields';
 import { useHeaderOrder } from '@/lib/useHeaderOrder';
 import { usePMDrilldown } from '@/lib/usePMDrilldown';
 import { useProjectCredentials } from '@/lib/useProjectCredentials';
 import { useHorizontalScroll } from '@/lib/useHorizontalScroll';
 import { ReorderableHeader } from '@/components/ReorderableHeader';
-import { AddColumnButton, CustomFieldCell, CustomFieldHeader } from '@/components/CustomFieldControls';
 import { SheetCell } from '@/components/SheetCell';
-import { AddRowButton, AddRowFormRow } from '@/components/AddRowForm';
+import PageLoader from '@/components/PageLoader';
 import { useConfirm } from '@/lib/confirm';
 import { useAuth } from '@/lib/useAuth';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
@@ -72,28 +70,21 @@ export default function AllProjectsPage() {
   const { canEdit } = useAuth();
   const [data, setData] = useState<AllProjectsData | null>(null);
   const [ready, setReady] = useState(false);
+  // Stays true until the very first database fetch settles (success or failure).
+  // `ready` alone can't gate the loader here: it flips as soon as the local
+  // cache is read, so on a fresh visit the page would flash empty while the
+  // (potentially slow) sheet load is still in flight.
+  const [loading, setLoading] = useState(true);
   const [activeSheet, setActiveSheet] = useState<string>('');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState<'sync' | 'upload' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, string>>({});
-  const [addingRow, setAddingRow] = useState(false);
   const [rowBusy, setRowBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   // Also makes a plain mouse wheel scroll the sheet sideways.
   const { ref: scrollRef, scrollBy } = useHorizontalScroll<HTMLDivElement>();
-
-  // Database-backed custom fields (extra columns) for the active sheet.
-  const {
-    fields: customFields,
-    values: customValues,
-    error: customError,
-    addField: addCustomField,
-    deleteField: deleteCustomField,
-    setValue: saveCustomValue,
-    reorderFields: reorderCustomFields,
-  } = useCustomFields(ALL_PROJECTS_PAGE_KEY, activeSheet);
 
   /** Pull the authoritative rows back after a mutation. */
   const refresh = useCallback(async () => {
@@ -150,6 +141,10 @@ export default function AllProjectsPage() {
         if (!cancelled && !cached) {
           setError(e?.message || 'Could not reach the server to load data.');
         }
+      } finally {
+        // The first load has settled — drop the loader whatever the outcome, so
+        // errors and empty states get to show through instead of an endless spin.
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -197,17 +192,16 @@ export default function AllProjectsPage() {
 
   const toStr = (v: unknown) => (v == null ? '' : String(v));
 
-  // Search spans the sheet's own cells and the custom-field columns, so a row is
-  // findable by anything visible on it.
+  // Search spans the sheet's own cells, so a row is findable by anything visible
+  // on it.
   const filteredRows = useMemo(() => {
     const rows = sheet?.rows ?? [];
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(r => {
-      if (Object.values(r.cells).some(v => toStr(v).toLowerCase().includes(q))) return true;
-      return customFields.some(f => (customValues[vkey(f.id, r.uid)] ?? '').toLowerCase().includes(q));
-    });
-  }, [sheet, query, customFields, customValues]);
+    return rows.filter(r =>
+      Object.values(r.cells).some(v => toStr(v).toLowerCase().includes(q))
+    );
+  }, [sheet, query]);
 
   // Cap the table at 20 rows; searching or switching sheets returns to page 1.
   const { page, setPage, totalPages, pageRows, from, to } = usePagination(
@@ -282,29 +276,6 @@ export default function AllProjectsPage() {
     }
   };
 
-  const addRow = async (cells: Record<string, string>) => {
-    if (!sheet) return false;
-    setRowBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/sheet-rows/${ALL_PROJECTS_PAGE_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetName: sheet.name, cells }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || 'could not add that row');
-      await refresh();
-      setAddingRow(false);
-      return true;
-    } catch (e: any) {
-      setError(e?.message || 'could not add that row');
-      return false;
-    } finally {
-      setRowBusy(false);
-    }
-  };
-
   const deleteRow = async (row: SheetRowRecord) => {
     const isUser = row.origin === 'user';
     const ok = await confirm({
@@ -341,7 +312,7 @@ export default function AllProjectsPage() {
       format, scope,
       pageKey: ALL_PROJECTS_PAGE_KEY,
       fileprefix: 'all-projects',
-      data, sheet, headers, filteredRows, customFields, customValues,
+      data, sheet, headers, filteredRows,
     });
 
   const localTotalRows = useMemo(
@@ -351,7 +322,10 @@ export default function AllProjectsPage() {
   const syncedTotal = useSyncedTotal('all-projects');
   const totalRows = syncedTotal || localTotalRows;
 
-  if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
+  // Show the loader until the cache is read, and — when the cache was empty —
+  // until the first database fetch settles, so a fresh visit spins rather than
+  // flashing an empty page. An error short-circuits it so the message can show.
+  if (!ready || (loading && !data && !error)) return <PageLoader />;
 
   return (
     <div className="space-y-5">
@@ -402,10 +376,10 @@ export default function AllProjectsPage() {
         </div>
       </div>
 
-      {(error || customError || orderError) && (
+      {(error || orderError) && (
         <div className="rounded-xl border border-rose-200 bg-gradient-to-r from-rose-50 to-rose-50/50 px-4 py-3 text-[12px] text-rose-700 flex items-start gap-2 shadow-sm">
           <span className="mt-0.5">⚠️</span>
-          <span>{error || customError || orderError}</span>
+          <span>{error || orderError}</span>
         </div>
       )}
 
@@ -493,8 +467,6 @@ export default function AllProjectsPage() {
                       filteredCount={filteredRows.length}
                       totalCount={localTotalRows}
                     />
-                    <AddRowButton onClick={() => setAddingRow(true)} disabled={addingRow || rowBusy} />
-                    <AddColumnButton onAdd={addCustomField} disabled={rowBusy} />
                   </div>
                 </div>
 
@@ -514,17 +486,6 @@ export default function AllProjectsPage() {
                           >
                             {h}
                           </ReorderableHeader>
-                        ))}
-                        {customFields.map((f, i) => (
-                          <CustomFieldHeader
-                            key={`cf-${f.id}`}
-                            field={f}
-                            index={i}
-                            count={customFields.length}
-                            onMove={reorderCustomFields}
-                            onDelete={deleteCustomField}
-                            className="text-[10.5px] uppercase tracking-wider py-2.5 text-black font-bold"
-                          />
                         ))}
                         {/* Actions column is edit-only, so it's hidden for
                             signed-out (read-only) users. */}
@@ -683,14 +644,6 @@ export default function AllProjectsPage() {
                                 </SheetCell>
                               );
                             })}
-                            {customFields.map(f => (
-                              <CustomFieldCell
-                                key={`cf-${f.id}`}
-                                value={customValues[vkey(f.id, row.uid)] ?? ''}
-                                label={f.label}
-                                onSave={val => saveCustomValue(f.id, row.uid, val)}
-                              />
-                            ))}
                             {canEdit && (
                               <td className="px-3 py-2 align-middle border-b border-slate-100 whitespace-nowrap text-right sticky right-0 bg-white">
                                 {isEditing ? (
@@ -717,20 +670,10 @@ export default function AllProjectsPage() {
                           </tr>
                         );
                       })}
-                      {addingRow && (
-                        <AddRowFormRow
-                          headers={headers}
-                          trailingCols={customFields.length}
-                          busy={rowBusy}
-                          onSave={addRow}
-                          onCancel={() => setAddingRow(false)}
-                          cellClassName="border-b border-slate-100"
-                        />
-                      )}
-                      {filteredRows.length === 0 && !addingRow && (
+                      {filteredRows.length === 0 && (
                         <tr>
-                          <td colSpan={(headers.length || 1) + customFields.length + (canEdit ? 1 : 0)} className="px-3 py-10 text-center text-slate-500 italic">
-                            {sheet.rows.length === 0 ? (canEdit ? 'No rows yet. Use Add Row to create one.' : 'No rows yet.') : 'No matching rows.'}
+                          <td colSpan={(headers.length || 1) + (canEdit ? 1 : 0)} className="px-3 py-10 text-center text-slate-500 italic">
+                            {sheet.rows.length === 0 ? 'No rows yet.' : 'No matching rows.'}
                           </td>
                         </tr>
                       )}

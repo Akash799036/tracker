@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import PMProjectsModal from '@/components/PMProjectsModal';
 import {
   CATEGORY_SOURCES,
@@ -23,18 +23,35 @@ import {
 export function usePMDrilldown(headers: string[]) {
   const [summaries, setSummaries] = useState(() => readAllSummaries(CATEGORY_SOURCES));
   const [openPM, setOpenPM] = useState<string | null>(null);
+  const hydrated = useRef(false);
+
+  // The drill-down spans every workbook, so building the full PM index needs the
+  // cross-page cache. Pulling that on mount would make every table page fetch
+  // all six sheets just to render — the very fan-out we want to avoid. Instead
+  // fetch it lazily the first time a PM cell is actually clicked; until then the
+  // page uses only whatever cross-page cache already sits in localStorage (from
+  // pages the user has already visited). This keeps a plain page visit to a
+  // single API call.
+  const ensureHydrated = useCallback(() => {
+    if (hydrated.current) return;
+    hydrated.current = true;
+    hydrateFromServer().then(() => setSummaries(readAllSummaries(CATEGORY_SOURCES)));
+  }, []);
 
   useEffect(() => {
     const refresh = () => setSummaries(readAllSummaries(CATEGORY_SOURCES));
-    // The drill-down spans every workbook, not just this page's, so make sure
-    // the cross-page cache is populated even on a cold first visit.
-    hydrateFromServer().then(refresh);
     const onStorage = () => refresh();
+    // Same-tab cache writes (e.g. the page's own SheetSyncPanel finishing its
+    // fetch) don't fire a 'storage' event, so also refresh on the app's custom
+    // update event. This keeps this page's PM cells clickable from its own data
+    // without pulling every other sheet up front.
     window.addEventListener('storage', onStorage);
     window.addEventListener('focus', onStorage);
+    window.addEventListener('sheet-sync:updated', onStorage);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('focus', onStorage);
+      window.removeEventListener('sheet-sync:updated', onStorage);
     };
   }, []);
 
@@ -50,7 +67,7 @@ export function usePMDrilldown(headers: string[]) {
       return (
         <button
           type="button"
-          onClick={e => { e.stopPropagation(); setOpenPM(name); }}
+          onClick={e => { e.stopPropagation(); ensureHydrated(); setOpenPM(name); }}
           title={`View ${name}'s projects`}
           className="font-medium text-black underline decoration-slate-400 decoration-dotted underline-offset-2 transition-colors hover:text-slate-700 hover:decoration-solid focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 rounded"
         >

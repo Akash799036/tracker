@@ -3,6 +3,42 @@ import { pool, query } from './db';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import type { AllProjectsData, AllProjectsSheet, SheetRow, SheetRowRecord } from './allProjectsTypes';
 import { formatHeadingName } from './sheetSync';
+import {
+  WEBSITE_DELIVERY_PAGE_KEY,
+  WEBSITE_DELIVERY_FIELDS,
+  EMAIL_FIELD,
+} from './websiteDeliveryForm';
+
+// Column order for a freshly created "Deliveries 2" tab: the built-in Email
+// field first (every form gets it), then this form's fields in spec order.
+//
+// The cell key is the field `name`, not its label — several fields legitimately
+// share a label (e.g. domain vs hosting both have "Password" / "Username" /
+// "Portal URL"), and keying by label would collapse them into one column and
+// lose data. Names are unique by construction.
+const WEBSITE_DELIVERY_DEFAULT_HEADERS: string[] = [
+  EMAIL_FIELD.name,
+  ...WEBSITE_DELIVERY_FIELDS.map(f => f.name),
+];
+
+// Column order for a freshly created "Live Projects" tab.
+//
+// A Live Projects row is created by /api/website-delivery-submit, which re-keys
+// each submitted field from its machine `name` to its human LABEL before saving
+// (see the `project()` helper in that route). So the Live Projects tab is keyed
+// by field LABEL, and its default headers must be those same labels — in the
+// exact submission order (built-in Email label first, then each field's label in
+// spec order) — for the values to land under the right columns instead of the
+// sync appending duplicate mismatched columns.
+//
+// Deriving these from WEBSITE_DELIVERY_FIELDS (the Live Projects document's field
+// list) keeps the sheet headers and the form permanently in lock-step: renaming a
+// field's label in one place updates the column here too.
+const LIVE_PROJECTS_PAGE_KEY = 'live-projects';
+const LIVE_PROJECTS_DEFAULT_HEADERS: string[] = [
+  EMAIL_FIELD.label,
+  ...WEBSITE_DELIVERY_FIELDS.map(f => f.label),
+];
 // The schema and the reconciling sync live in scripts/lib/sheetStore.mjs so the
 // seeder (plain .mjs, no build step) and this module share one implementation.
 // Only read/mutation helpers that the app needs are defined here.
@@ -176,11 +212,49 @@ async function findTab(pageKey: string, sheetName: string) {
   return { id: rows[0].id, headers: parseJson(rows[0].headers, []) as string[] };
 }
 
+/**
+ * Ensure a tab carries every header in `wanted`, appending any it is missing and
+ * returning the tab's resulting header list.
+ *
+ * This is what lets a data-entry surface write to a column the synced workbook
+ * never had (e.g. the credentials popup's Login URL / Username / Password
+ * fields, or a brand-new field typed into a row): instead of the value being
+ * silently dropped because its header isn't a known column, the column is added
+ * to the tab so the value has somewhere to live and shows up in the table.
+ *
+ * New headers append after the existing ones, preserving column order. Matching
+ * is exact by design — headers are the cell keys, so "Password" and "password"
+ * are genuinely different columns and we must not merge them.
+ */
+async function ensureTabHeaders(
+  tabId: number, currentHeaders: string[], wanted: string[]
+): Promise<string[]> {
+  const have = new Set(currentHeaders);
+  const missing = wanted.filter(h => h && !have.has(h));
+  if (!missing.length) return currentHeaders;
+  const next = [...currentHeaders, ...missing];
+  await query<ResultSetHeader>(
+    'UPDATE sheet_tabs SET headers = ? WHERE id = ?',
+    [JSON.stringify(next), tabId]
+  );
+  return next;
+}
+
 async function findOrCreateTab(pageKey: string, sheetName: string) {
   const existing = await findTab(pageKey, sheetName);
   if (existing) return existing;
 
-  const defaultHeaders = [
+  // The Website Delivery form owns its column set, so a freshly created tab for
+  // it starts with that form's fields (Email first, keyed by name) rather than
+  // the projects defaults. The Live Projects tab receives the same submissions
+  // re-keyed to their labels, so it uses those labels as its columns — this is
+  // what makes the submit/sync line up with the Live Projects document's field
+  // names. Any other page keeps the projects-style default.
+  const defaultHeaders = pageKey === WEBSITE_DELIVERY_PAGE_KEY
+    ? WEBSITE_DELIVERY_DEFAULT_HEADERS
+    : pageKey === LIVE_PROJECTS_PAGE_KEY
+    ? LIVE_PROJECTS_DEFAULT_HEADERS
+    : [
     'Project name', 'Start Date', 'Platform', 'Figma Approval Date', 'Html Approval Date',
     'Cms Approval Date', 'Project Live Date', 'Project Manager', 'Project Scope',
     'Google Drive link (All Available Scope)', 'Developer', 'Status', 'Last Working day',
@@ -241,8 +315,12 @@ export async function insertUserRow(
   const tab = await findOrCreateTab(pageKey, sheetName);
   if (!tab) return null;
 
+  // Any supplied key that isn't yet a column becomes one, so nothing the user
+  // typed is thrown away. `headers` then covers every value we're about to save.
+  const headers = await ensureTabHeaders(tab.id, tab.headers, Object.keys(cells));
+
   const clean: SheetRow = {};
-  for (const h of tab.headers) clean[h] = typeof cells[h] === 'string' ? cells[h] : '';
+  for (const h of headers) clean[h] = typeof cells[h] === 'string' ? cells[h] : '';
 
   const conn = await pool.getConnection();
   try {
@@ -293,16 +371,21 @@ export async function updateRowCells(
 ): Promise<boolean> {
   await ensureSheetTables();
   const rows = await query<(RowDataPacket & {
-    origin: 'sheet' | 'user'; cells: unknown; cells_override: unknown; headers: unknown;
+    tab_id: number; origin: 'sheet' | 'user'; cells: unknown; cells_override: unknown; headers: unknown;
   })[]>(
-    `SELECT r.origin, r.cells, r.cells_override, t.headers
+    `SELECT r.tab_id, r.origin, r.cells, r.cells_override, t.headers
        FROM sheet_rows r JOIN sheet_tabs t ON t.id = r.tab_id
       WHERE r.row_uid = ? AND t.page_key = ? LIMIT 1`,
     [rowUid, pageKey]
   );
   if (!rows.length) return false;
   const row = rows[0];
-  const headers = parseJson(row.headers, []) as string[];
+  const currentHeaders = parseJson(row.headers, []) as string[];
+
+  // Any edited key that isn't yet a column becomes one, so an edit to a field
+  // the workbook never had (e.g. Login URL / Password from the credentials
+  // popup) is stored and shown instead of silently dropped.
+  const headers = await ensureTabHeaders(row.tab_id, currentHeaders, Object.keys(cells));
 
   const patch: SheetRow = {};
   for (const h of headers) {

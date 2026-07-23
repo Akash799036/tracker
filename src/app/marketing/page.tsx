@@ -1,7 +1,8 @@
 'use client';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMarketing } from '@/lib/marketing';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import PageLoader from '@/components/PageLoader';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 
 export default function Page() {
@@ -9,7 +10,9 @@ export default function Page() {
 }
 
 function Marketing() {
-  const { tasks, ready } = useMarketing();
+  const { tasks, ready, syncing, ensureSynced } = useMarketing();
+  // Pull marketing data only now that the user is on the Marketing page.
+  useEffect(() => { ensureSynced(); }, [ensureSynced]);
   const syncedTotal = useSyncedTotal('marketing');
   const totalCount = syncedTotal || tasks.length;
 
@@ -19,7 +22,7 @@ function Marketing() {
     return { total: tasks.length, done, inProgress };
   }, [tasks]);
 
-  if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
+  if (!ready || (syncing && tasks.length === 0)) return <PageLoader />;
 
   return (
     <div className="space-y-5">

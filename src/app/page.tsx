@@ -18,6 +18,7 @@ import {
   type PageSummary,
 } from '@/lib/dashboardAggregate';
 import PMProjectsModal from '@/components/PMProjectsModal';
+import PageLoader from '@/components/PageLoader';
 
 function fmtTime(ts: number | null) {
   if (!ts) return 'Not synced yet';
@@ -205,6 +206,9 @@ export default function Dashboard() {
   // Categories draw on one extra workbook that has no page of its own.
   const [categorySummaries, setCategorySummaries] = useState<PageSummary[]>([]);
   const [ready, setReady] = useState(false);
+  // True until the first server hydration settles; lets the loader stay up on a
+  // fresh visit where localStorage has no summaries to show yet.
+  const [hydrating, setHydrating] = useState(true);
 
   useEffect(() => {
     const refresh = () => {
@@ -215,7 +219,7 @@ export default function Dashboard() {
     setReady(true);
     // Pull straight from the database so the dashboard is populated on first
     // visit rather than only after the user has opened every other page.
-    hydrateFromServer().then(refresh);
+    hydrateFromServer().then(refresh).finally(() => setHydrating(false));
 
     const watchedKeys = new Set(CATEGORY_SOURCES.map(s => s.storageKey));
     const onStorage = (e: StorageEvent) => {
@@ -237,9 +241,8 @@ export default function Dashboard() {
     return times.length ? Math.max(...times) : null;
   }, [summaries]);
 
-  // Status KPIs read CATEGORY_SOURCES, not DASHBOARD_SOURCES: the project rows
-  // live in the 'dashboard' workbook, which DASHBOARD_SOURCES omits because it
-  // has no page to link to. Reading the narrower set missed every project row.
+  // Status KPIs read the aggregate sources. The All Projects source is the
+  // 'dashboard' workbook (where the project rows live), so these see every row.
   const statusMap = useMemo(() => aggregateStatus(categorySummaries), [categorySummaries]);
   const platformMap = useMemo(() => aggregatePlatform(categorySummaries), [categorySummaries]);
   const buckets = useMemo(() => classifyStatuses(statusMap), [statusMap]);
@@ -289,7 +292,10 @@ export default function Dashboard() {
   // Equals buckets.total by construction — every statused row is in one bucket.
   const statusTotal = buckets.total;
 
-  if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
+  // Keep the loader up until the cache is read and — when nothing was cached —
+  // until the first server hydration lands, so the dashboard doesn't flash empty
+  // KPIs on a fresh visit.
+  if (!ready || (hydrating && summaries.length === 0)) return <PageLoader />;
 
   const anySynced = summaries.some(s => s.syncedAt);
   const pageAccents = [

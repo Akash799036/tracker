@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '@/lib/useAuth';
 import { isDateHeader, toDateInputValue } from '@/lib/dateField';
-import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
+import { PLATFORM_OPTIONS, PM_OPTIONS, STATUS_OPTIONS, SCOPE_OPTIONS, COMPLETED_OPTIONS, isPlatformHeader, isPMHeader, isDeveloperHeader, isStatusHeader, isCompletedHeader, isDriveOrScopeHeader, isScopeHeader } from '@/lib/types';
 import { FileUploadInput } from './FileUploadInput';
 import { DeveloperMultiSelect } from './DeveloperMultiSelect';
 import { SelectWithAddNew } from './SelectWithAddNew';
@@ -45,6 +45,7 @@ export function SheetCell({
   const isPM = isPMHeader(header);
   const isDeveloper = isDeveloperHeader(header);
   const isStatus = isStatusHeader(header);
+  const isCompleted = isCompletedHeader(header);
   const isScope = isScopeHeader(header);
   const isDriveOrScope = isDriveOrScopeHeader(header);
 
@@ -200,6 +201,26 @@ export function SheetCell({
       );
     }
 
+    if (isCompleted) {
+      return (
+        <td className={`px-3 py-2 align-middle ${className}`}>
+          <SelectWithAddNew
+            value={draft}
+            onChange={val => setDraft(val)}
+            options={COMPLETED_OPTIONS}
+            placeholder="Select…"
+            className="w-full min-w-[8rem] px-2 py-1 rounded border border-indigo-400 focus:outline-none text-sm bg-white text-black"
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commit(); }
+              if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            }}
+            selectRef={inputRef as any}
+          />
+        </td>
+      );
+    }
+
     return (
       <td className={`px-3 py-2 align-middle ${className}`}>
         <input
@@ -227,7 +248,7 @@ export function SheetCell({
       className={`px-3 py-2 align-middle whitespace-nowrap max-w-[28rem] truncate cursor-default text-black ${className}`}
     >
       {/* An empty value would collapse to an unclickable sliver, so show a faint
-          dash as the hit target — same convention as CustomFieldCell. */}
+          dash as the hit target. */}
       {value === '' ? <span className="text-slate-300">—</span> : children}
     </td>
   );

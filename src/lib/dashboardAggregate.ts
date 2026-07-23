@@ -27,7 +27,13 @@ export type DashboardSource = {
 };
 
 export const DASHBOARD_SOURCES: DashboardSource[] = [
-  { key: 'all-projects',          label: 'All Projects',         href: '/all-projects',          page: 'all-projects',          storageKey: ALL_PROJECTS_STORAGE_KEY },
+  // The All Projects workbook is stored under the 'dashboard' page key, NOT
+  // 'all-projects' — see ALL_PROJECTS_PAGE_KEY in allProjectsTypes.ts, which the
+  // /all-projects page itself reads from. The 'all-projects' page key was never
+  // seeded and returns 0 rows, so pointing this card at it left every
+  // all-projects panel on the dashboard empty. Read from 'dashboard' and cache
+  // under the same ALL_PROJECTS_STORAGE_KEY the page uses, so the two agree.
+  { key: 'all-projects',          label: 'All Projects',         href: '/all-projects',          page: 'dashboard',             storageKey: ALL_PROJECTS_STORAGE_KEY },
   { key: 'live-projects',         label: 'Live Projects',        href: '/live-projects',         page: 'live-projects',         storageKey: SHEET_SYNC_STORAGE_KEY('live-projects' as SheetSyncPageKey) },
   { key: 'projects',              label: 'Ongoing Projects',     href: '/projects',              page: 'projects',              storageKey: SHEET_SYNC_STORAGE_KEY('projects' as SheetSyncPageKey) },
   { key: 'priority-list',         label: 'Priority Projects',    href: '/priority-list',         page: 'priority-list',         storageKey: SHEET_SYNC_STORAGE_KEY('priority-list' as SheetSyncPageKey) },
@@ -36,14 +42,13 @@ export const DASHBOARD_SOURCES: DashboardSource[] = [
 ];
 
 /**
- * The `dashboard` workbook holds the cleanest per-category PM data (Wordpress,
- * Shopify, Custom, NextNode) but has no page of its own to link to, so it feeds
- * the category/PM grouping without appearing in Pages or Sync activity.
+ * The category/PM panels read the same set of sources. The All Projects entry
+ * above already IS the 'dashboard' workbook (the cleanest per-category PM data),
+ * so no separate 'dashboard' source is needed — adding one pointed a second
+ * cache at the very same rows and made the aggregates dedupe those doubles by
+ * uid on every pass. One source per workbook keeps it simple and correct.
  */
-export const CATEGORY_SOURCES: DashboardSource[] = [
-  ...DASHBOARD_SOURCES,
-  { key: 'dashboard', label: 'Project Categories', href: '/all-projects', page: 'dashboard', storageKey: SHEET_SYNC_STORAGE_KEY('dashboard' as SheetSyncPageKey) },
-];
+export const CATEGORY_SOURCES: DashboardSource[] = DASHBOARD_SOURCES;
 
 export type PageSummary = {
   source: DashboardSource;

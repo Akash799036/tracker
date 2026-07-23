@@ -24,11 +24,15 @@ function ProjectPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const id = params.get('id') || '';
-  const { get, upsert, remove, ready } = useStore();
+  const { get, upsert, remove, ready, ensureSynced } = useStore();
   const { canEdit, ready: authReady } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const [form, setForm] = useState<Project>(EMPTY);
+
+  // Editing an existing project needs its row loaded from the database; a brand
+  // new project (no id) does not, so only pull when there's an id to edit.
+  useEffect(() => { if (id) ensureSynced(); }, [id, ensureSynced]);
 
   // This page is entirely a create/edit form, so it's for signed-in users only.
   // A signed-out visitor who lands here directly is sent to log in (and back

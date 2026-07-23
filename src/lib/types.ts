@@ -101,6 +101,10 @@ export const STATUS_OPTIONS = ['Not Started','In Progress','Design Phase','Devel
 export const SSL_OPTIONS = ['Active','Pending','Expired','Not Applicable'];
 export const CATEGORY_OPTIONS = ['Ongoing','Pending','Hold','Dead'];
 export const SCOPE_OPTIONS = ['Yes','No'];
+// The "Completed" column tracks the work stage a project has reached. These are
+// the recurring stages; any pre-existing off-list value is still shown and kept
+// selectable in the editor so historical notes aren't lost.
+export const COMPLETED_OPTIONS = ['Figma','HTML','Dynamic','Live','Delivered','Paused'];
 
 export const PM_OPTIONS = [
   'Debjoti Dutta',
@@ -114,8 +118,6 @@ export const PM_OPTIONS = [
   'Megha Dhara',
   'Kusum Gurung',
   'Pritam Sen',
-  'Biswajit Mondal',
-  'Sayandip Saha',
   'Other',
 ];
 
@@ -133,6 +135,13 @@ export function isDeveloperHeader(header: string): boolean {
 
 export function isStatusHeader(header: string): boolean {
   return /\bstatus\b/i.test(header || '');
+}
+
+// The "Completed" column is a work-stage dropdown (Figma/HTML/Dynamic/…).
+// Matches the column exactly (optionally with a trailing "stage"/"status" word)
+// so it doesn't swallow unrelated headers that merely contain the word.
+export function isCompletedHeader(header: string): boolean {
+  return /^\s*completed(\s+(stage|status))?\s*$/i.test(header || '');
 }
 
 // The Project Scope column is a Yes/No dropdown, distinct from the file/drive

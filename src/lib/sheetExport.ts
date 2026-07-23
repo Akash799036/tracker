@@ -2,9 +2,15 @@
 
 import * as XLSX from 'xlsx';
 import type { AllProjectsData, AllProjectsSheet, SheetRowRecord } from './allProjectsTypes';
-import { type CustomField, type CustomFieldValue, type ValueMap, vkey } from './useCustomFields';
-import { download, getCleanFileName, getFileUrl, getScopeFileUrl } from './ui';
+import { download, getCleanFileName, getScopeFileUrl } from './ui';
 import { isDriveOrScopeHeader } from './types';
+import { WEBSITE_DELIVERY_PAGE_KEY, WEBSITE_DELIVERY_FIELDS } from './websiteDeliveryForm';
+
+// Cell keys (field names) of encrypted fields on the Website Delivery form. These
+// columns are excluded from every export so secrets never land in a CSV/XLSX.
+const WEBSITE_DELIVERY_ENC_KEYS = new Set(
+  WEBSITE_DELIVERY_FIELDS.filter(f => f.encrypted).map(f => f.name)
+);
 
 // Shared export routine for every sheet table (SheetSyncPanel and All Projects).
 //
@@ -66,52 +72,17 @@ function safeSheetName(name: string, taken: Set<string>) {
   return candidate;
 }
 
-/** Merge a tab's custom-field columns into its rows. */
+/** Flatten a tab's headers and rows into the export shape. */
 function buildTable(
   name: string,
   headers: string[],
-  rows: SheetRowRecord[],
-  fields: CustomField[],
-  values: ValueMap
+  rows: SheetRowRecord[]
 ): ExportTable {
   return {
     name,
-    headers: [...headers, ...fields.map(f => f.label)],
-    rows: rows.map(r => {
-      const merged: Record<string, unknown> = { ...r.cells };
-      for (const f of fields) merged[f.label] = values[vkey(f.id, r.uid)] ?? '';
-      return merged;
-    }),
+    headers: [...headers],
+    rows: rows.map(r => ({ ...r.cells })),
   };
-}
-
-/**
- * Fetch every tab's custom fields for a page in one request, grouped by sheet
- * name. Whole-page export needs the fields for tabs the user never opened, and
- * `useCustomFields` only ever holds the active tab's.
- */
-async function fetchAllCustomFields(pageKey: string) {
-  const bySheet = new Map<string, { fields: CustomField[]; values: ValueMap }>();
-  try {
-    const res = await fetch(`/api/custom-fields/${pageKey}`, { cache: 'no-store' });
-    if (!res.ok) return bySheet;
-    const json = await res.json();
-    const values: ValueMap = {};
-    for (const v of (json.values || []) as CustomFieldValue[]) {
-      values[vkey(v.fieldId, v.rowUid)] = v.value;
-    }
-    for (const f of (json.fields || []) as CustomField[]) {
-      const entry = bySheet.get(f.sheetName) ?? { fields: [], values };
-      entry.fields.push(f);
-      bySheet.set(f.sheetName, entry);
-    }
-    // The API returns fields already ordered by position, but it groups by page,
-    // so re-sort within each sheet to be safe.
-    for (const entry of bySheet.values()) entry.fields.sort((a, b) => a.position - b.position);
-  } catch {
-    /* export the sheet columns alone rather than failing outright */
-  }
-  return bySheet;
 }
 
 function writeCsv(tables: ExportTable[], baseName: string, withSheetColumn: boolean) {
@@ -173,7 +144,7 @@ function writeXlsx(tables: ExportTable[], baseName: string) {
 export type ExportRequest = {
   format: ExportFormat;
   scope: ExportScope;
-  /** Page key for the custom-fields API; also the filename prefix. */
+  /** Page key; also the default filename prefix. */
   pageKey: string;
   /** Filename prefix, when it should differ from the page key. */
   fileprefix?: string;
@@ -184,24 +155,25 @@ export type ExportRequest = {
   headers: string[];
   /** Active tab's rows after the search filter. */
   filteredRows: SheetRowRecord[];
-  /** Active tab's custom fields, already loaded by useCustomFields. */
-  customFields: CustomField[];
-  customValues: ValueMap;
 };
 
-/**
- * Build and download the requested export. Async only because a whole-page
- * export has to fetch the other tabs' custom fields first.
- */
+/** Build and download the requested export. */
 export async function exportSheetData(req: ExportRequest): Promise<void> {
   const {
     format, scope, pageKey, fileprefix = pageKey,
-    data, sheet, headers, filteredRows, customFields, customValues,
+    data, sheet, headers, filteredRows,
   } = req;
+
+  // On the Website Delivery page, drop encrypted columns from any export so
+  // secrets (passwords, cPanel/VPS logins) never leave in a CSV/XLSX.
+  const visibleHeaders = (hs: string[]) =>
+    pageKey === WEBSITE_DELIVERY_PAGE_KEY
+      ? hs.filter(h => !WEBSITE_DELIVERY_ENC_KEYS.has(h))
+      : hs;
 
   if (scope === 'tab') {
     if (!sheet) return;
-    const table = buildTable(sheet.name, headers, filteredRows, customFields, customValues);
+    const table = buildTable(sheet.name, visibleHeaders(headers), filteredRows);
     const baseName = slug(`${fileprefix}-${sheet.name}`);
     if (format === 'csv') writeCsv([table], baseName, false);
     else writeXlsx([table], baseName);
@@ -211,20 +183,11 @@ export async function exportSheetData(req: ExportRequest): Promise<void> {
   const sheets = data?.sheets ?? [];
   if (!sheets.length) return;
 
-  const fieldsBySheet = await fetchAllCustomFields(pageKey);
-  const tables = sheets.map(s => {
-    // The active tab keeps its on-screen column order and its already-loaded
-    // fields; the rest fall back to the stored order from the server.
-    const isActive = s.name === sheet?.name;
-    const cf = fieldsBySheet.get(s.name);
-    return buildTable(
-      s.name,
-      isActive ? headers : s.headers,
-      s.rows,
-      isActive ? customFields : (cf?.fields ?? []),
-      isActive ? customValues : (cf?.values ?? {})
-    );
-  });
+  const tables = sheets.map(s =>
+    // The active tab keeps its on-screen column order; the rest use the stored
+    // order from the server.
+    buildTable(s.name, visibleHeaders(s.name === sheet?.name ? headers : s.headers), s.rows)
+  );
 
   const baseName = slug(`${fileprefix}-all-tabs`);
   if (format === 'csv') writeCsv(tables, baseName, true);

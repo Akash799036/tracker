@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { FIELDS, CSV_HEADERS, type Project } from './types';
 import { seedProjects } from './seed';
 
@@ -26,6 +26,15 @@ type Stats = { total: number; progress: number; live: number; hold: number; revi
 type StoreCtx = {
   projects: Project[];
   ready: boolean;
+  /** True while the first pull from the live database is still in flight. */
+  syncing: boolean;
+  /**
+   * Pull the projects sheet from the live database. Called on demand by the
+   * pages that actually show project rows (Ongoing / Live Projects), so the
+   * projects API is not hit on app load or on pages that don't need it. Safe to
+   * call repeatedly — it only performs the network pull once per session.
+   */
+  ensureSynced: () => void;
   get: (id: string) => Project | null;
   upsert: (p: Project) => Project | Promise<Project>;
   remove: (id: string) => void | Promise<void>;
@@ -122,6 +131,14 @@ function cellsToProject(rowUid: string, cells: Record<string, string>): Project 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [ready, setReady] = useState(false);
+  // Distinct from `ready`: `ready` flips as soon as the local cache is read so
+  // the app can render, while `syncing` stays true until the authoritative
+  // database pull finishes. Pages use it to keep the loader up until real data
+  // is on screen rather than only until localStorage was read.
+  const [syncing, setSyncing] = useState(true);
+  // Guards the on-demand database pull so it runs at most once per session even
+  // if several pages call ensureSynced().
+  const syncStarted = useRef(false);
 
   useEffect(() => {
     let list = loadAll();
@@ -135,8 +152,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setProjects(list);
     setReady(true);
 
-    // Synchronize with live database
-    const syncDatabase = async () => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) setProjects(loadAll());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Pull the projects sheet from the live database — only when a page that needs
+  // it asks, not on app load. Runs once per session; later calls are no-ops.
+  const ensureSynced = useCallback(() => {
+    if (syncStarted.current) return;
+    syncStarted.current = true;
+    (async () => {
       try {
         const res = await fetch('/api/sheet-sync/projects');
         if (!res.ok) return;
@@ -152,15 +180,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dbProjects)); } catch {}
         }
       } catch {}
-    };
-
-    syncDatabase();
-
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) setProjects(loadAll());
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+      finally { setSyncing(false); }
+    })();
   }, []);
 
   const persist = useCallback((next: Project[]) => {
@@ -280,8 +301,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [projects, persist]);
 
   const value = useMemo<StoreCtx>(() => ({
-    projects, ready, get, upsert, remove, clear, stats, storageSize, exportJSON, exportCSV, importJSON,
-  }), [projects, ready, get, upsert, remove, clear, stats, storageSize, exportJSON, exportCSV, importJSON]);
+    projects, ready, syncing, ensureSynced, get, upsert, remove, clear, stats, storageSize, exportJSON, exportCSV, importJSON,
+  }), [projects, ready, syncing, ensureSynced, get, upsert, remove, clear, stats, storageSize, exportJSON, exportCSV, importJSON]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

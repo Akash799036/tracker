@@ -36,9 +36,14 @@ function ProjectCredentialsModal({
     return { header: fallbackName, value: '' };
   };
 
+  // Fallback names match the canonical headers used by the seeder defaults and
+  // CSV_HEADERS (src/lib/types.ts). When a project's tab doesn't yet have a
+  // credential column, saving now creates it under these exact names, so the
+  // fallbacks must equal the real column names — otherwise a near-duplicate
+  // ("Username / ID" vs "Username/ID") would be spun up alongside the real one.
   const website = getHeaderInfo(['website link', 'website', 'domain name', 'domain', 'url'], 'Website Link');
   const loginUrl = getHeaderInfo(['login url', 'login'], 'Login URL');
-  const username = getHeaderInfo(['username', 'username/id', 'user id', 'username / id'], 'Username / ID');
+  const username = getHeaderInfo(['username', 'username/id', 'user id', 'username / id'], 'Username/ID');
   const password = getHeaderInfo(['password', 'pass'], 'Password');
   const projectNameInfo = getHeaderInfo(['project name', 'project', 'title'], 'Project Name');
 

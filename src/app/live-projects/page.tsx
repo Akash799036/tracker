@@ -1,11 +1,16 @@
 'use client';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import PageLoader from '@/components/PageLoader';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
+import { useAuth } from '@/lib/useAuth';
 
 export default function LiveProjects() {
-  const { projects, ready } = useStore();
+  const { projects, ready, syncing, ensureSynced } = useStore();
+  const { canEdit } = useAuth();
+  // Pull project data only now that the user is on a page that shows it.
+  useEffect(() => { ensureSynced(); }, [ensureSynced]);
   const syncedTotal = useSyncedTotal('live-projects');
   const live = useMemo(() =>
     projects.filter(p => /live|delivered/i.test(p.status || '') || (p.liveDate && new Date(p.liveDate).getTime() < Date.now())),
@@ -20,7 +25,7 @@ export default function LiveProjects() {
   const withSsl = useMemo(() =>
     live.filter(p => /active|valid|installed/i.test(p.sslStatus || '')).length, [live]);
 
-  if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
+  if (!ready || (syncing && projects.length === 0)) return <PageLoader />;
 
   return (
     <div className="space-y-5">

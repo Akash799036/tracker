@@ -4,11 +4,14 @@ import { StoreProvider } from '@/lib/store';
 import { MarketingProvider } from '@/lib/marketing';
 import { AuthProvider } from '@/lib/useAuth';
 import AppShell from '@/components/AppShell';
-import AutoSheetSync from '@/components/AutoSheetSync';
 
 export const metadata: Metadata = {
   title: 'Project Tracker',
   description: 'Dashboard v1.0 (Next.js)',
+  icons: {
+    icon: '/fav.ico',
+    shortcut: '/fav.ico',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +26,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <StoreProvider>
             <MarketingProvider>
-              <AutoSheetSync />
               <AppShell>{children}</AppShell>
             </MarketingProvider>
           </StoreProvider>

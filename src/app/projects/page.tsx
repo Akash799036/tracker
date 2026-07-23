@@ -1,14 +1,17 @@
 'use client';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import SheetSyncPanel from '@/components/SheetSyncPanel';
+import PageLoader from '@/components/PageLoader';
 import { useSyncedTotal } from '@/lib/useSyncedTotal';
 import { useAuth } from '@/lib/useAuth';
 
 export default function ProjectsPage() {
-  const { projects, ready } = useStore();
+  const { projects, ready, syncing, ensureSynced } = useStore();
   const { canEdit } = useAuth();
+  // Pull project data only now that the user is on a page that shows it.
+  useEffect(() => { ensureSynced(); }, [ensureSynced]);
   const syncedTotal = useSyncedTotal('projects');
   const totalCount = syncedTotal || projects.length;
 
@@ -19,7 +22,9 @@ export default function ProjectsPage() {
     return { total: projects.length, active, hold, live };
   }, [projects]);
 
-  if (!ready) return <div className="p-6 text-slate-500">Loading…</div>;
+  // Keep the loader up until the local cache is read AND — when there's nothing
+  // cached to show yet — the first database pull has finished.
+  if (!ready || (syncing && projects.length === 0)) return <PageLoader />;
 
   return (
     <div className="space-y-5">
@@ -41,9 +46,14 @@ export default function ProjectsPage() {
           <div className="flex items-center gap-2 shrink-0">
             {/* Creating a project is an edit action — only for signed-in users. */}
             {canEdit && (
-              <Link href="/project" className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all">
-                + New Project
-              </Link>
+              <>
+                <Link href="/website-delivery-2" className="inline-flex h-9 px-3.5 rounded-lg bg-gradient-to-br from-brand-600 to-brand-700 text-white text-[12px] font-semibold hover:from-brand-700 hover:to-brand-800 items-center shadow-md hover:shadow-lg transition-all">
+                  + Add Project
+                </Link>
+                <Link href="/project" className="inline-flex h-9 px-3.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-50 items-center shadow-sm transition-all">
+                  New Project
+                </Link>
+              </>
             )}
           </div>
         </div>

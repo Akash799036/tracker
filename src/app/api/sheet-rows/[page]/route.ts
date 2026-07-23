@@ -3,6 +3,48 @@ import { isValidPageKey } from '@/lib/sheetSync';
 import { badPage, badRequest, fail, notFound } from '@/lib/apiHelpers';
 import { insertUserRow, updateRowCells, deleteRow, restoreRow } from '@/lib/sheetData';
 import { requireAuth } from '@/lib/auth';
+import { encryptField } from '@/lib/fieldCrypto';
+import {
+  WEBSITE_DELIVERY_PAGE_KEY,
+  WEBSITE_DELIVERY_FIELDS,
+} from '@/lib/websiteDeliveryForm';
+
+// Names of the encrypted fields on the Website Delivery form, keyed by the cell
+// key they're stored under (the field `name`).
+const WEBSITE_DELIVERY_ENC_KEYS = new Set(
+  WEBSITE_DELIVERY_FIELDS.filter(f => f.encrypted).map(f => f.name)
+);
+
+/**
+ * Encrypt at rest the values of any encrypted field for the Website Delivery
+ * page. Non-encrypted pages and non-encrypted keys pass through unchanged.
+ *
+ * When `blankToKeep` is set (edits), an empty value for an encrypted field is
+ * DROPPED rather than stored — so leaving a password box blank keeps the existing
+ * secret instead of wiping it. On insert there is nothing to keep, so a blank
+ * stays blank.
+ */
+function applyFieldEncryption(
+  pageKey: string,
+  cells: Record<string, string>,
+  blankToKeep: boolean
+): Record<string, string> {
+  if (pageKey !== WEBSITE_DELIVERY_PAGE_KEY) return cells;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(cells)) {
+    if (!WEBSITE_DELIVERY_ENC_KEYS.has(k)) {
+      out[k] = v;
+      continue;
+    }
+    if (v === '' || v == null) {
+      if (blankToKeep) continue; // keep the stored secret; don't overwrite with blank
+      out[k] = '';
+      continue;
+    }
+    out[k] = encryptField(v);
+  }
+  return out;
+}
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,7 +75,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ page: s
     const body = await req.json().catch(() => ({}));
     const sheetName = String(body?.sheetName ?? '').trim();
     if (!sheetName) return badRequest('sheetName is required');
-    const row = await insertUserRow(pageKey, sheetName, readCells(body?.cells));
+    const cells = applyFieldEncryption(pageKey, readCells(body?.cells), false);
+    const row = await insertUserRow(pageKey, sheetName, cells);
     if (!row) return notFound(`sheet "${sheetName}" not found on this page`);
     return NextResponse.json({ row }, { status: 201 });
   } catch (e) {
@@ -59,8 +102,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ page: 
       return NextResponse.json({ ok: true });
     }
 
-    const cells = readCells(body?.cells);
-    if (!Object.keys(cells).length) return badRequest('cells is required');
+    const rawCells = readCells(body?.cells);
+    if (!Object.keys(rawCells).length) return badRequest('cells is required');
+    // blank-to-keep on edit: an emptied encrypted field keeps its stored secret.
+    const cells = applyFieldEncryption(pageKey, rawCells, true);
+    if (!Object.keys(cells).length) return NextResponse.json({ ok: true });
     const ok = await updateRowCells(pageKey, rowUid, cells);
     if (!ok) return notFound('row not found on this page');
     return NextResponse.json({ ok: true });

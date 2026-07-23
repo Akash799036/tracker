@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export type MarketingTask = {
   id: string;
@@ -41,6 +41,14 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 type Ctx = {
   tasks: MarketingTask[];
   ready: boolean;
+  /** True while the first pull from the live database is still in flight. */
+  syncing: boolean;
+  /**
+   * Pull the marketing sheet from the live database. Called on demand by the
+   * Marketing page, so the marketing API is not hit on app load or on pages
+   * that don't need it. Runs the network pull once per session.
+   */
+  ensureSynced: () => void;
   upsert: (t: MarketingTask) => MarketingTask | Promise<MarketingTask>;
   remove: (id: string) => void | Promise<void>;
   clear: () => void;
@@ -78,6 +86,11 @@ function cellsToTask(rowUid: string, cells: Record<string, string>): MarketingTa
 export function MarketingProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<MarketingTask[]>([]);
   const [ready, setReady] = useState(false);
+  // See the note in store.tsx: `ready` means "cache read", `syncing` means the
+  // authoritative database pull is still running.
+  const [syncing, setSyncing] = useState(true);
+  // Guards the on-demand pull so it runs at most once per session.
+  const syncStarted = useRef(false);
 
   useEffect(() => {
     let list: MarketingTask[] = [];
@@ -92,9 +105,14 @@ export function MarketingProvider({ children }: { children: React.ReactNode }) {
     }
     setTasks(list);
     setReady(true);
+  }, []);
 
-    // Synchronize with live database
-    const syncDatabase = async () => {
+  // Pull the marketing sheet from the live database — only when the Marketing
+  // page asks, not on app load. Runs once per session; later calls are no-ops.
+  const ensureSynced = useCallback(() => {
+    if (syncStarted.current) return;
+    syncStarted.current = true;
+    (async () => {
       try {
         const res = await fetch('/api/sheet-sync/marketing');
         if (!res.ok) return;
@@ -110,9 +128,8 @@ export function MarketingProvider({ children }: { children: React.ReactNode }) {
           try { localStorage.setItem(KEY, JSON.stringify(dbTasks)); } catch {}
         }
       } catch {}
-    };
-
-    syncDatabase();
+      finally { setSyncing(false); }
+    })();
   }, []);
 
   const persist = useCallback((next: MarketingTask[]) => {
@@ -188,7 +205,7 @@ export function MarketingProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  const value = useMemo(() => ({ tasks, ready, upsert, remove, clear }), [tasks, ready, upsert, remove, clear]);
+  const value = useMemo(() => ({ tasks, ready, syncing, ensureSynced, upsert, remove, clear }), [tasks, ready, syncing, ensureSynced, upsert, remove, clear]);
   return <C.Provider value={value}>{children}</C.Provider>;
 }
 

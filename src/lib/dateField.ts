@@ -2,9 +2,9 @@
 //
 // Sheet columns carry no type metadata — a column is "a date column" purely by
 // what its header is called (e.g. "Start Date", "Live Date", "Deadline"). These
-// helpers let every editable surface (SheetCell, CustomFieldCell, the Add Row
-// form, the whole-row edit inputs) agree on which columns get a calendar picker
-// and how a stored value maps to/from the native <input type="date"> format.
+// helpers let every editable surface (SheetCell, the whole-row edit inputs)
+// agree on which columns get a calendar picker and how a stored value maps
+// to/from the native <input type="date"> format.
 
 // Matched case-insensitively against the header. Kept deliberately broad so the
 // common project-tracker date columns light up without per-sheet configuration.
