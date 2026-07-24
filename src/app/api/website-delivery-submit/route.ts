@@ -3,6 +3,7 @@ import { badRequest, fail } from '@/lib/apiHelpers';
 import { insertUserRow } from '@/lib/sheetData';
 import { encryptField } from '@/lib/fieldCrypto';
 import { sendMail, adminEmail } from '@/lib/email';
+import { websiteLiveEmailHtml } from '@/lib/emailTemplates';
 import { appendLiveProjectRow } from '@/lib/googleSheets';
 import {
   WEBSITE_DELIVERY_FIELDS,
@@ -118,14 +119,6 @@ function project(cells: Record<string, string>) {
   return { forStore, forSheet, forEmail };
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 /** A URL string, normalized to include a scheme so it links correctly. */
 function href(url: string): string {
   const u = url.trim();
@@ -224,55 +217,27 @@ export async function POST(req: Request) {
     const text = textLines.join('\n');
 
     // --- HTML body ---
-    const rowsHtml = forEmail
-      .map(
-        ({ label, value }) =>
-          `<tr><td style="padding:4px 12px 4px 0;color:#64748b;white-space:nowrap;">${escapeHtml(
-            label
-          )}</td><td style="padding:4px 0;color:#0f172a;">${escapeHtml(value)}</td></tr>`
-      )
-      .join('');
-
-    const websiteHtml = websiteUrl
-      ? `<p style="margin:0 0 16px;font-size:14px;">
-           <span style="color:#64748b;">Website:</span>
-           <a href="${escapeHtml(websiteUrl)}" style="color:#2563eb;font-weight:600;">${escapeHtml(websiteUrl)}</a>
-         </p>`
-      : '';
-
-    const credHtml = credGroups.length
-      ? `<h3 style="margin:20px 0 8px;color:#0f172a;font-size:14px;">Login credentials</h3>
-         ${credGroups
-           .map(
-             g => `
-             <div style="margin:0 0 12px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
-               <div style="font-weight:600;color:#0f172a;font-size:13px;margin-bottom:6px;">${escapeHtml(g.title)}</div>
-               <table style="border-collapse:collapse;font-size:13px;">
-                 ${g.url ? `<tr><td style="padding:2px 12px 2px 0;color:#64748b;">URL</td><td style="padding:2px 0;"><a href="${escapeHtml(href(g.url))}" style="color:#2563eb;">${escapeHtml(g.url)}</a></td></tr>` : ''}
-                 ${g.username ? `<tr><td style="padding:2px 12px 2px 0;color:#64748b;">Username</td><td style="padding:2px 0;color:#0f172a;font-family:monospace;">${escapeHtml(g.username)}</td></tr>` : ''}
-                 ${g.password ? `<tr><td style="padding:2px 12px 2px 0;color:#64748b;">Password</td><td style="padding:2px 0;color:#0f172a;font-family:monospace;">${escapeHtml(g.password)}</td></tr>` : ''}
-               </table>
-             </div>`
-           )
-           .join('')}`
-      : '';
+    // Composed by the shared, email-client-safe template (src/lib/emailTemplates.ts).
+    // URLs are normalized to include a scheme so they link correctly.
+    const html = websiteLiveEmailHtml({
+      projectName,
+      websiteUrl: websiteUrl || undefined,
+      submitter: submitter || undefined,
+      credGroups: credGroups.map(g => ({
+        title: g.title,
+        url: g.url ? href(g.url) : undefined,
+        username: g.username || undefined,
+        password: g.password || undefined,
+      })),
+      fields: forEmail,
+    });
 
     const [emailed, sheeted] = await Promise.all([
       sendMail({
         subject: `Website live: ${projectName}`,
         replyTo: submitter || undefined,
         text,
-        html: `
-          <div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:640px;">
-            <h2 style="margin:0 0 4px;color:#0f172a;font-size:18px;">🎉 Website is now live</h2>
-            <p style="margin:0 0 16px;color:#475569;font-size:14px;">
-              The website for <strong>${escapeHtml(projectName)}</strong> has gone live.
-            </p>
-            ${websiteHtml}
-            ${credHtml}
-            <h3 style="margin:20px 0 8px;color:#0f172a;font-size:14px;">Full submission</h3>
-            <table style="border-collapse:collapse;font-size:13px;">${rowsHtml}</table>
-          </div>`,
+        html,
       }),
       appendLiveProjectRow(forSheet),
     ]);

@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/useAuth';
 import { useToast } from '@/lib/toast';
 import {
@@ -22,7 +23,34 @@ const HONEYPOT_FIELD = 'company_website_hp';
 
 export default function WebsiteDelivery2Page() {
   const toast = useToast();
-  const { ready: authReady, isSelected } = useAuth();
+  const router = useRouter();
+  const { ready: authReady, isSuperAdmin, user, logout } = useAuth();
+
+  // Log the user out and send them to the login page. Offered on the thank-you
+  // screen so a general user can sign off once their submission is in.
+  const onLogout = async () => {
+    await logout();
+    router.push('/login');
+  };
+
+  // Theme toggle. This page is chromeless (no Topbar), so we replicate the
+  // Topbar's light/dark control here: read the stored/system preference on mount,
+  // reflect it on <html data-theme>, and persist changes to localStorage under
+  // the same 'pt-theme' key so the choice carries across the app.
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  useEffect(() => {
+    const stored = (typeof window !== 'undefined' && localStorage.getItem('pt-theme')) as 'light' | 'dark' | null;
+    const sys = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const t = stored || (sys ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', t);
+    setTheme(t);
+  }, []);
+  const toggleTheme = () => {
+    const t = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('pt-theme', t);
+    setTheme(t);
+  };
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -117,7 +145,7 @@ export default function WebsiteDelivery2Page() {
             <p className="mt-2 text-[13px] text-slate-600">
               Your project has been submitted. The team has been notified.
             </p>
-            <div className="mt-6 flex items-center justify-center">
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
                 onClick={() => setSubmitted(false)}
@@ -125,6 +153,18 @@ export default function WebsiteDelivery2Page() {
               >
                 Submit another
               </button>
+              {/* Let a logged-in user (e.g. a general user) sign off now that
+                  their submission is in. */}
+              {user && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="inline-flex h-10 px-5 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12.5px] font-semibold hover:bg-slate-100 items-center gap-1.5 shadow-sm transition-all"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log out
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -147,17 +187,52 @@ export default function WebsiteDelivery2Page() {
         className="absolute left-[-9999px] top-[-9999px] h-0 w-0 opacity-0"
       />
 
-      {/* Back to Live Projects — only for selected users (general users can't
-          reach that page and shouldn't be offered a link to it). */}
-      {isSelected && (
-        <Link
-          href="/live-projects"
-          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 hover:text-slate-900 transition-colors"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          Back to Live Projects
-        </Link>
-      )}
+      {/* Header row: an optional "Back to Live Projects" link (super admin only —
+          general users can't reach that page) on the left, and the theme toggle +
+          Log out (for any logged-in user) on the right. This page is chromeless
+          (no Topbar), so these controls — which normally live there — are provided
+          here instead. */}
+      <div className="flex items-center justify-between gap-2">
+        {isSuperAdmin ? (
+          <Link
+            href="/live-projects"
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Back to Live Projects
+          </Link>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {user && (
+            <span className="text-[12px] text-slate-600 mr-1 truncate max-w-[45vw] sm:max-w-none">
+              <span className="text-slate-400">Signed in as</span>{' '}
+              <span className="font-semibold text-slate-800">{user.username}</span>
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="shrink-0 h-9 w-9 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white grid place-items-center transition-colors"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? '☀' : '☾'}
+          </button>
+          {user && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white border border-slate-200 text-slate-700 text-[12px] font-semibold hover:bg-slate-100 shadow-sm transition-colors"
+              title="Log out"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Log out
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white via-brand-50/40 to-white p-5 shadow-sm">
