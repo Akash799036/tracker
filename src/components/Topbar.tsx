@@ -13,9 +13,8 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
 
   const onLogout = async () => {
     await logout();
-    // After logout the user is a general user again, so send them to the only
-    // page they can now see — the Live Projects form.
-    router.push('/website-delivery-2');
+    // After logout there's no session, so send the user to the login page.
+    router.push('/login');
   };
 
   useEffect(() => {

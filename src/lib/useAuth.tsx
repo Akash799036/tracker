@@ -20,7 +20,7 @@ import { encryptCredentials } from './loginCryptoClient';
 // requireAuth() on the mutating API routes, so a hidden button is a convenience,
 // not a security control.
 
-export type AuthUser = { username: string; email?: string; selected?: boolean };
+export type AuthUser = { username: string; email?: string; selected?: boolean; role?: number };
 
 type AuthState = {
   user: AuthUser | null;
@@ -37,6 +37,10 @@ type AuthState = {
    * middleware; hiding chrome here just avoids a content flash.
    */
   isSelected: boolean;
+  /** The logged-in user's role (1 = super admin, 2 = general user), or undefined. */
+  role?: number;
+  /** Convenience: true only for the super-admin role. */
+  isSuperAdmin: boolean;
   login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -105,6 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authConfigured,
     canEdit: user !== null,
     isSelected: user !== null && user.selected !== false,
+    role: user?.role,
+    isSuperAdmin: user?.role === 1,
     login,
     logout,
     refresh,

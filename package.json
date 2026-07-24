@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "seed": "node scripts/seed-sheets.mjs",
+    "seed:users": "node scripts/seed-users.mjs",
+    "set-password": "node scripts/set-user-password.mjs",
     "migrate": "node scripts/migrate-row-uids.mjs"
   },
   "dependencies": {

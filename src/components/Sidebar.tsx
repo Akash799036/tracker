@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useGsap } from '@/lib/useGsap';
+import { useAuth } from '@/lib/useAuth';
 
 const NAV = [
   { href: '/', label: 'Dashboard' },
@@ -13,8 +14,15 @@ const NAV = [
   { href: '/marketing', label: 'Marketing Projects' },
 ];
 
+// Links only a super admin (role 1) may see. Backed by requireSuperAdmin() on
+// the routes themselves — hiding them here is just to declutter the nav.
+const ADMIN_NAV = [
+  { href: '/users', label: 'User Management' },
+];
+
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const path = usePathname();
+  const { isSuperAdmin } = useAuth();
   const isActive = (href: string) => href === '/' ? path === '/' : path.startsWith(href);
 const sidebarRef = useGsap('slide');
   return (
@@ -36,6 +44,17 @@ const sidebarRef = useGsap('slide');
               {n.label}
             </Link>
           ))}
+          {isSuperAdmin && (
+            <>
+              <div className="pt-3 pb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Admin</div>
+              {ADMIN_NAV.map(n => (
+                <Link key={n.href} href={n.href}
+                  className={`nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-700 hover:bg-slate-100 ${isActive(n.href) ? 'active' : ''}`}>
+                  {n.label}
+                </Link>
+              ))}
+            </>
+          )}
         </nav>
       </aside>
       {open && <div onClick={onClose} className="fixed inset-0 bg-black/40 z-30 lg:hidden" />}

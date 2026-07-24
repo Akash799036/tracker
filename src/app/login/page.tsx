@@ -59,8 +59,8 @@ function LoginInner() {
 
             {!authConfigured && ready && (
               <div className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-800">
-                Login is not configured on the server yet. Set <code className="font-mono">AUTH_SECRET</code>,{' '}
-                <code className="font-mono">AUTH_USERNAME</code> and <code className="font-mono">AUTH_PASSWORD</code> in <code className="font-mono">.env.local</code>.
+                Login is not configured on the server yet. Set <code className="font-mono">AUTH_SECRET</code> in{' '}
+                <code className="font-mono">.env.local</code> and seed users with <code className="font-mono">npm run seed:users</code>.
               </div>
             )}
 

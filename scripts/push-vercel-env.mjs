@@ -1,7 +1,10 @@
-// Push the DB_* variables from .env.local into your Vercel project so the live
-// site can reach the database. .env.local is git-ignored and never uploaded to
-// Vercel, which is why the deployed app boots with no DB credentials and shows
-// no data — this script fixes that.
+// Push the runtime env vars from .env.local into your Vercel project so the live
+// site works: database credentials, AUTH_SECRET, the DASHBOARD_USERS_JSON
+// allow-list, and FIELD_ENC_KEY. .env.local is git-ignored and never uploaded to
+// Vercel, which is why the deployed app otherwise boots with no DB credentials
+// and an empty Dashboard allow-list — this script fixes that. It also prunes the
+// legacy single-admin login vars (see PRUNE) so the Dashboard backdoor can't
+// linger on Vercel after being removed locally.
 //
 // Prerequisites (one time):
 //   npx vercel login          # authenticate in your browser
@@ -33,6 +36,14 @@ const KEYS = [
 // Keys that must exist in .env.local for the push to proceed. Others are pushed
 // only when present, so an optional var (e.g. FIELD_ENC_KEY) can be absent.
 const REQUIRED = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'AUTH_SECRET'];
+
+// Keys that must NOT exist on Vercel — the legacy single-admin login. Dashboard
+// access is the config/dashboard-users.json allow-list (shipped via
+// DASHBOARD_USERS_JSON) only; leaving these set on Vercel would grant a backdoor
+// admin login into the Dashboard. Removing them from .env.local does NOT remove
+// them from Vercel — the push only adds keys — so we prune them here every run so
+// the deployed environment can't silently drift back to having the backdoor.
+const PRUNE = ['AUTH_USERNAME', 'AUTH_PASSWORD', 'AUTH_PASSWORD_HASH'];
 
 // Which Vercel environments to target. Default: production only.
 const arg = (process.argv[2] || 'production').toLowerCase();
@@ -82,6 +93,17 @@ for (const target of TARGETS) {
       process.exit(1);
     }
     console.log(`✓ ${key} → ${target}`);
+  }
+
+  // Prune the legacy backdoor keys. `vercel env rm` exits non-zero when the key
+  // isn't set — that's the desired end state, so we don't treat it as an error.
+  for (const key of PRUNE) {
+    const res = spawnSync('npx', ['vercel', 'env', 'rm', key, target, '-y'], {
+      cwd: ROOT,
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+    });
+    console.log(res.status === 0 ? `✗ removed ${key} → ${target}` : `· ${key} already absent → ${target}`);
   }
 }
 

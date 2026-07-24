@@ -21,9 +21,9 @@ export const revalidate = 0;
 // A generic "invalid credentials" message on any failure so we don't reveal
 // whether the username or the password was the wrong one.
 export async function POST(req: Request) {
-  if (!authConfigured()) {
+  if (!(await authConfigured())) {
     return NextResponse.json(
-      { error: 'Login is not configured on the server. Set AUTH_SECRET, AUTH_USERNAME and AUTH_PASSWORD.' },
+      { error: 'Login is not configured on the server. Set AUTH_SECRET and seed users (npm run seed:users).' },
       { status: 503 }
     );
   }
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   // `username` carries the login identity — an email on the Dashboard allow-list,
   // or the legacy admin username. verifyLogin resolves it to a full SessionUser
   // (with email + selected flag) or null.
-  const user = verifyLogin(username, password);
+  const user = await verifyLogin(username, password);
   if (!user) {
     return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
   }

@@ -9,12 +9,17 @@ import { useAuth } from '@/lib/useAuth';
 import { ConfirmProvider } from '@/lib/confirm';
 import { ToastProvider } from '@/lib/toast';
 
-// Routes a general (not-selected) user is allowed to see. Everything else is the
-// selected-users-only internal app. Kept in sync with the public paths in
-// middleware.ts (the authoritative gate); this list only drives what chrome to
-// show and whether to redirect on the client.
-const PUBLIC_PREFIXES = ['/website-delivery-2', '/login'];
-const FORM_PATH = '/website-delivery-2';
+// Standalone routes that render without the dashboard chrome: the login page,
+// the Access Denied screen, and the public Live Projects submission form. Kept
+// in sync with the public paths in middleware.ts (the authoritative gate); this
+// list only drives what chrome to show and whether to redirect on the client.
+const PUBLIC_PREFIXES = ['/login', '/access-denied', '/website-delivery-2'];
+const LOGIN_PATH = '/login';
+
+// The form page a General User (role 2) is confined to. Mirrors the same
+// constant in middleware.ts.
+const GENERAL_USER_PAGE = '/website-delivery-2';
+const ROLE_GENERAL_USER = 2;
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
@@ -26,19 +31,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [hidden, setHidden] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { ready: authReady, isSelected } = useAuth();
+  const { ready: authReady, isSelected, role } = useAuth();
 
   const publicRoute = isPublicPath(pathname);
+  const isGeneralUser = role === ROLE_GENERAL_USER;
+  const onGeneralUserPage =
+    pathname === GENERAL_USER_PAGE || pathname.startsWith(GENERAL_USER_PAGE + '/');
 
-  // Client route guard (belt-and-suspenders with middleware): if a general user
-  // somehow lands on an internal route, send them to the form. The middleware
-  // already blocks the request server-side; this just prevents a flash if the
-  // page was reached via client navigation.
+  // Client route guard (belt-and-suspenders with middleware):
+  //  • A signed-out visitor on an internal route → login (carrying ?from=).
+  //  • A General User (role 2) anywhere but their form page → back to the form.
+  //    The middleware already rewrites such requests to Access Denied server-side;
+  //    this just prevents a flash when the page is reached via client navigation.
   useEffect(() => {
-    if (authReady && !isSelected && !publicRoute) {
-      router.replace(FORM_PATH);
+    if (!authReady) return;
+    if (isGeneralUser) {
+      if (!publicRoute && !onGeneralUserPage) router.replace(GENERAL_USER_PAGE);
+      return;
     }
-  }, [authReady, isSelected, publicRoute, router]);
+    if (!isSelected && !publicRoute) {
+      router.replace(`${LOGIN_PATH}?from=${encodeURIComponent(pathname)}`);
+    }
+  }, [authReady, isSelected, isGeneralUser, onGeneralUserPage, publicRoute, pathname, router]);
 
   // The intro overlay is only a "the shell is ready to interact with" splash. It
   // dismisses as soon as the local cache has been read — it no longer waits for
@@ -53,10 +67,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(t);
   }, [done]);
 
-  // General users (and any public route) get a bare, chrome-free shell: no
-  // sidebar, no topbar, no login button, no data-sync splash — just the form /
-  // thank-you (or login). This is what makes the form the only thing a general
-  // user can see.
+  // Standalone routes (login, the public form) get a bare, chrome-free shell: no
+  // sidebar, no topbar, no data-sync splash. A signed-out visitor on an internal
+  // route also renders chromeless briefly — just long enough to avoid a flash
+  // before the guard above redirects them to login.
   const chromeless = publicRoute || (authReady && !isSelected);
 
   if (chromeless) {

@@ -10,5 +10,5 @@ export const revalidate = 0;
 // explain "login is disabled on the server" instead of silently failing.
 export async function GET() {
   const user = await getSessionUser();
-  return NextResponse.json({ user, authConfigured: authConfigured() });
+  return NextResponse.json({ user, authConfigured: await authConfigured() });
 }

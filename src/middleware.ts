@@ -3,11 +3,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 // Access gate for the whole app.
 //
 // Model: only "selected" users (the Dashboard allow-list) may reach the
-// Dashboard and internal pages. Everyone else is a general user who may only use
-// the Live Projects submission form. This middleware is the AUTHORITATIVE gate —
-// it runs before any page/route handler, so a general user can never load the
-// Dashboard HTML or hit its data APIs. Client-side checks are only there to
-// avoid a content flash.
+// Dashboard and internal pages. Anyone not signed in is redirected to the login
+// page. This middleware is the AUTHORITATIVE gate — it runs before any
+// page/route handler, so a signed-out visitor can never load the Dashboard HTML
+// or hit its data APIs. Client-side checks are only there to avoid a content
+// flash.
 //
 // It re-verifies the signed session cookie here (in the Edge runtime) rather than
 // importing src/lib/auth.ts, which is server-only and uses node:crypto. We only
@@ -16,15 +16,26 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const SESSION_COOKIE = 'pt_session';
 
-// The form and the login page are the only pages a general (not-selected) user
-// may open. Everything else redirects them to the form.
-const PUBLIC_PAGES = ['/website-delivery-2', '/login'];
+// Role values — mirror src/lib/roles.ts. Only what the Edge middleware needs.
+const ROLE_GENERAL_USER = 2;
 
-// API routes a general user may call: the form submit, and the auth endpoints
-// (so login/me/logout/pubkey keep working while signed out).
-const PUBLIC_API_PREFIXES = ['/api/website-delivery-submit', '/api/auth/'];
+// Pages a signed-out visitor may open: the login page, the Access Denied page,
+// and the public Live Projects submission form (a link people are given
+// directly, not part of the Dashboard). Everything else redirects to login.
+const PUBLIC_PAGES = ['/login', '/access-denied', '/website-delivery-2'];
 
-const FORM_PATH = '/website-delivery-2';
+// API routes callable while signed out: the auth endpoints (so
+// login/me/logout/pubkey work), and the public form submit.
+const PUBLIC_API_PREFIXES = ['/api/auth/', '/api/website-delivery-submit'];
+
+// The form page a General User (role 2) is confined to, plus the API routes it
+// needs to function. A General User reaching anything outside this set is shown
+// Access Denied. This is the authoritative gate for the role-2 restriction.
+const GENERAL_USER_PAGE = '/website-delivery-2';
+const GENERAL_USER_API_PREFIXES = ['/api/auth/', '/api/website-delivery-submit'];
+
+const LOGIN_PATH = '/login';
+const ACCESS_DENIED_PATH = '/access-denied';
 
 function b64urlToBytes(s: string): Uint8Array {
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
@@ -46,7 +57,7 @@ function bytesToB64url(bytes: ArrayBuffer): string {
 async function verifyToken(
   token: string,
   secret: string
-): Promise<{ selected: boolean } | null> {
+): Promise<{ selected: boolean; role?: number } | null> {
   const dot = token.lastIndexOf('.');
   if (dot < 1) return null;
   const payload = token.slice(0, dot);
@@ -76,12 +87,15 @@ async function verifyToken(
 
   try {
     const json = new TextDecoder().decode(b64urlToBytes(payload));
-    const body = JSON.parse(json) as { exp?: number; s?: number };
+    const body = JSON.parse(json) as { exp?: number; s?: number; r?: number };
     if (typeof body.exp !== 'number' || body.exp < Date.now()) return null;
     // Back-compat: a token minted before `s` existed → treat a valid signed
     // session as selected.
     const selected = body.s === undefined ? true : body.s === 1;
-    return { selected };
+    // `r` (role) is signed into the token; 1 = super admin, 2 = general user.
+    // Undefined for legacy sessions that predate the role model.
+    const role = body.r === 1 || body.r === 2 ? body.r : undefined;
+    return { selected, role };
   } catch {
     return null;
   }
@@ -103,10 +117,35 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = secret && token ? await verifyToken(token, secret) : null;
 
+  // General Users (role 2) are logged in but confined to the submission form.
+  // They may reach ONLY that page and the APIs it needs; anything else is
+  // Access Denied. This check runs BEFORE the generic `selected` check below,
+  // because a general user IS a valid session — the restriction is by role.
+  if (session && session.role === ROLE_GENERAL_USER) {
+    const onForm =
+      pathname === GENERAL_USER_PAGE || pathname.startsWith(GENERAL_USER_PAGE + '/');
+    const onAllowedApi = GENERAL_USER_API_PREFIXES.some((p) => pathname.startsWith(p));
+    if (onForm || onAllowedApi) return NextResponse.next();
+
+    // Restricted target. Data APIs get a JSON 403; pages get the Access Denied
+    // screen (rewrite, not redirect, so the URL they typed stays visible).
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'Access denied. Your account may only use the submission form.' },
+        { status: 403 }
+      );
+    }
+    const denied = req.nextUrl.clone();
+    denied.pathname = ACCESS_DENIED_PATH;
+    denied.search = '';
+    return NextResponse.rewrite(denied);
+  }
+
   if (session && session.selected) return NextResponse.next();
 
-  // Not a selected user. Data APIs get a JSON 403; pages get redirected to the
-  // form so a general user always lands on the one thing they can use.
+  // Not signed in (or not a selected user). Data APIs get a JSON 403; pages get
+  // redirected to the login page, carrying ?from= so a successful login returns
+  // the visitor to where they were headed.
   if (pathname.startsWith('/api/')) {
     return NextResponse.json(
       { error: 'This area is restricted to authorized users.' },
@@ -115,8 +154,8 @@ export async function middleware(req: NextRequest) {
   }
 
   const url = req.nextUrl.clone();
-  url.pathname = FORM_PATH;
-  url.search = '';
+  url.pathname = LOGIN_PATH;
+  url.search = `?from=${encodeURIComponent(pathname + req.nextUrl.search)}`;
   return NextResponse.redirect(url);
 }
 

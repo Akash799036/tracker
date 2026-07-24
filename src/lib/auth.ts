@@ -52,7 +52,8 @@ function verifyAgainstHash(password: string, stored: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 import { cookies } from 'next/headers';
-import { findUserByEmail } from './dashboardUsers';
+import { findDbUserByEmail, findUserByEmail, hasAnyUser } from './dashboardUsers';
+import { ROLE_SUPER_ADMIN, type Role } from './roles';
 
 // Server-only authentication for the tracker.
 //
@@ -102,6 +103,9 @@ export type SessionUser = {
   username: string;
   email?: string;
   selected: boolean;
+  /** 1 = super admin, 2 = general user. See src/lib/roles.ts. Undefined for the
+   *  legacy admin fallback, which predates the role model. */
+  role?: Role;
 };
 
 function authSecret(): string | null {
@@ -126,9 +130,16 @@ function configuredUser(): CredentialConfig | null {
   return null; // no password configured → login is disabled
 }
 
-/** True when the server is configured well enough for anyone to log in. */
-export function authConfigured(): boolean {
-  return authSecret() !== null && configuredUser() !== null;
+/**
+ * True when the server is configured well enough for anyone to log in: a signing
+ * secret plus at least one login source. That source is EITHER the legacy admin
+ * credential OR at least one seeded user (app_users / the JSON allow-list) — so
+ * the DB-users-only model works without a legacy AUTH_PASSWORD_HASH.
+ */
+export async function authConfigured(): Promise<boolean> {
+  if (authSecret() === null) return false;
+  if (configuredUser() !== null) return true;
+  return hasAnyUser();
 }
 
 // Constant-time string comparison that also resists length leakage by hashing
@@ -174,10 +185,24 @@ function legacyAdminIdentity(): string {
  * Both branches always run their password comparison so timing doesn't reveal
  * which identity (if any) matched.
  */
-export function verifyLogin(identity: string, password: string): SessionUser | null {
+export async function verifyLogin(identity: string, password: string): Promise<SessionUser | null> {
   const id = identity.trim();
 
-  // (1) JSON allow-list, matched by email.
+  // (1) DB allow-list (app_users), matched by email. Authoritative once seeded —
+  // it carries the user's role, which the JSON file does not.
+  const dbUser = await findDbUserByEmail(id);
+  const dbOk = dbUser ? verifyAgainstHash(password, dbUser.passwordHash) : false;
+  if (dbUser && dbOk) {
+    return {
+      username: dbUser.name || dbUser.email,
+      email: dbUser.email,
+      selected: true,
+      role: dbUser.role,
+    };
+  }
+
+  // (2) JSON allow-list, matched by email. Fallback for when the DB isn't seeded
+  // yet; no role is granted from this source.
   const jsonUser = findUserByEmail(id);
   const jsonOk = jsonUser ? verifyAgainstHash(password, jsonUser.passwordHash) : false;
   if (jsonUser && jsonOk) {
@@ -185,10 +210,11 @@ export function verifyLogin(identity: string, password: string): SessionUser | n
       username: jsonUser.name || jsonUser.email,
       email: jsonUser.email,
       selected: true,
+      role: jsonUser.role,
     };
   }
 
-  // (2) Legacy admin fallback (by username or its email form).
+  // (3) Legacy admin fallback (by username or its email form).
   const cfg = configuredUser();
   if (cfg) {
     const okUser = safeEqual(id, cfg.username);
@@ -196,7 +222,8 @@ export function verifyLogin(identity: string, password: string): SessionUser | n
       ? verifyAgainstHash(password, cfg.hash)
       : safeEqual(password, cfg.password);
     if (okUser && okPass) {
-      return { username: cfg.username, email: legacyAdminIdentity(), selected: true };
+      // The legacy admin is the master account → treat it as super admin.
+      return { username: cfg.username, email: legacyAdminIdentity(), selected: true, role: ROLE_SUPER_ADMIN };
     }
   }
 
@@ -221,6 +248,10 @@ function makeToken(user: SessionUser, secret: string): string {
     u: user.username,
     e: user.email ?? '',
     s: user.selected ? 1 : 0,
+    // `r` (role) is signed into the token so a client can't elevate itself to
+    // super admin by editing the cookie — the HMAC would no longer match.
+    // Omitted when unset (legacy sessions predate the role model).
+    ...(user.role !== undefined ? { r: user.role } : {}),
     exp: Date.now() + SESSION_TTL_MS,
     n: randomBytes(6).toString('hex'),
   };
@@ -247,6 +278,7 @@ function readToken(token: string, secret: string): SessionUser | null {
       // Back-compat: a token minted before `s` existed has no flag; treat a
       // signed (thus trusted) session as selected in that case.
       selected: body.s === undefined ? true : body.s === 1,
+      role: body.r === 1 || body.r === 2 ? (body.r as Role) : undefined,
     };
   } catch {
     return null;
@@ -338,6 +370,20 @@ export async function requireSelected(): Promise<SessionUser | Response> {
   if (user && user.selected) return user;
   return new Response(
     JSON.stringify({ error: 'This area is restricted to authorized users.' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Guard for a route that only the super admin (role 1) may reach. Returns the
+ * user when authenticated AND role === 1, or a 403 Response otherwise. Use this
+ * for admin-only actions that a general user (role 2) must not perform.
+ */
+export async function requireSuperAdmin(): Promise<SessionUser | Response> {
+  const user = await getSessionUser();
+  if (user && user.role === ROLE_SUPER_ADMIN) return user;
+  return new Response(
+    JSON.stringify({ error: 'This action requires super admin privileges.' }),
     { status: 403, headers: { 'Content-Type': 'application/json' } }
   );
 }
