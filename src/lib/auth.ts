@@ -52,6 +52,7 @@ function verifyAgainstHash(password: string, stored: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 import { cookies } from 'next/headers';
+import { findUserByEmail } from './dashboardUsers';
 
 // Server-only authentication for the tracker.
 //
@@ -90,7 +91,18 @@ export const SESSION_COOKIE = 'pt_session';
 // login survives a normal work rhythm without a daily re-auth.
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type SessionUser = { username: string };
+// A session identifies a logged-in user. `selected` means the user is on the
+// Dashboard allow-list (config/dashboard-users.json or the legacy admin) and may
+// see the Dashboard and internal pages. General users are never logged in, so a
+// session always belongs to a selected user in the current model — but the flag
+// is carried explicitly (and signed into the token) so gating never has to infer
+// it, and so the model can grow non-selected accounts later without changing the
+// token shape.
+export type SessionUser = {
+  username: string;
+  email?: string;
+  selected: boolean;
+};
 
 function authSecret(): string | null {
   const s = process.env.AUTH_SECRET;
@@ -140,6 +152,57 @@ export function verifyCredentials(username: string, password: string): boolean {
   return okUser && okPass;
 }
 
+/**
+ * The email of the legacy admin account, if one is treated as an email. The
+ * login identity is an email address now, but the legacy admin is configured by
+ * AUTH_USERNAME (historically just "admin"). We accept that username as-is so an
+ * existing admin login keeps working, and also expose it as the `email` field.
+ */
+function legacyAdminIdentity(): string {
+  return (process.env.AUTH_USERNAME || 'admin').trim();
+}
+
+/**
+ * Authenticate a login identity (email, or the legacy admin username) + password
+ * and return the resulting SessionUser, or null on failure.
+ *
+ * Order of checks:
+ *   1. The Dashboard allow-list (config/dashboard-users.json) by email → selected.
+ *   2. The legacy single admin (AUTH_USERNAME/AUTH_PASSWORD[_HASH]) → selected,
+ *      kept as a fallback so the Dashboard is never locked out.
+ *
+ * Both branches always run their password comparison so timing doesn't reveal
+ * which identity (if any) matched.
+ */
+export function verifyLogin(identity: string, password: string): SessionUser | null {
+  const id = identity.trim();
+
+  // (1) JSON allow-list, matched by email.
+  const jsonUser = findUserByEmail(id);
+  const jsonOk = jsonUser ? verifyAgainstHash(password, jsonUser.passwordHash) : false;
+  if (jsonUser && jsonOk) {
+    return {
+      username: jsonUser.name || jsonUser.email,
+      email: jsonUser.email,
+      selected: true,
+    };
+  }
+
+  // (2) Legacy admin fallback (by username or its email form).
+  const cfg = configuredUser();
+  if (cfg) {
+    const okUser = safeEqual(id, cfg.username);
+    const okPass = cfg.kind === 'hash'
+      ? verifyAgainstHash(password, cfg.hash)
+      : safeEqual(password, cfg.password);
+    if (okUser && okPass) {
+      return { username: cfg.username, email: legacyAdminIdentity(), selected: true };
+    }
+  }
+
+  return null;
+}
+
 // ---- Session token: base64url(payload) + '.' + hmac(payload) ----------------
 
 function b64url(buf: Buffer): string {
@@ -151,7 +214,16 @@ function sign(payload: string, secret: string): string {
 }
 
 function makeToken(user: SessionUser, secret: string): string {
-  const body = { u: user.username, exp: Date.now() + SESSION_TTL_MS, n: randomBytes(6).toString('hex') };
+  // `e` (email) and `s` (selected flag, 1/0) live inside the signed payload, so a
+  // client can't grant itself Dashboard access by editing the cookie — the HMAC
+  // would no longer match. Keep the field names short to keep the cookie small.
+  const body = {
+    u: user.username,
+    e: user.email ?? '',
+    s: user.selected ? 1 : 0,
+    exp: Date.now() + SESSION_TTL_MS,
+    n: randomBytes(6).toString('hex'),
+  };
   const payload = b64url(Buffer.from(JSON.stringify(body)));
   return `${payload}.${sign(payload, secret)}`;
 }
@@ -169,7 +241,13 @@ function readToken(token: string, secret: string): SessionUser | null {
     const body = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
     if (typeof body.u !== 'string' || typeof body.exp !== 'number') return null;
     if (body.exp < Date.now()) return null; // expired
-    return { username: body.u };
+    return {
+      username: body.u,
+      email: typeof body.e === 'string' && body.e ? body.e : undefined,
+      // Back-compat: a token minted before `s` existed has no flag; treat a
+      // signed (thus trusted) session as selected in that case.
+      selected: body.s === undefined ? true : body.s === 1,
+    };
   } catch {
     return null;
   }
@@ -246,5 +324,20 @@ export async function requireAuth(): Promise<SessionUser | Response> {
   return new Response(
     JSON.stringify({ error: 'Authentication required. Please log in to make changes.' }),
     { status: 401, headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * Guard for a route that only selected (Dashboard) users may reach. Returns the
+ * user when authenticated AND selected, or a 403 Response otherwise. The
+ * middleware is the primary gate for pages; this backs any API route that must
+ * be limited to selected users beyond the generic requireAuth().
+ */
+export async function requireSelected(): Promise<SessionUser | Response> {
+  const user = await getSessionUser();
+  if (user && user.selected) return user;
+  return new Response(
+    JSON.stringify({ error: 'This area is restricted to authorized users.' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } }
   );
 }

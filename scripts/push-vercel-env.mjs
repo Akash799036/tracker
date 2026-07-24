@@ -20,8 +20,19 @@ import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// The app has no authentication, so only the database credentials need to ship.
-const KEYS = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+// Vars the live site needs: database credentials, plus the auth config. Notably
+// DASHBOARD_USERS_JSON carries the Dashboard allow-list — config/dashboard-users.json
+// is gitignored and never deploys, so without this env var the deployed app has an
+// empty allow-list and no one can reach the Dashboard. AUTH_SECRET signs the
+// session cookie and is required in production. FIELD_ENC_KEY decrypts stored
+// form fields. Any key not present in .env.local is skipped (see OPTIONAL below).
+const KEYS = [
+  'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME',
+  'AUTH_SECRET', 'DASHBOARD_USERS_JSON', 'FIELD_ENC_KEY',
+];
+// Keys that must exist in .env.local for the push to proceed. Others are pushed
+// only when present, so an optional var (e.g. FIELD_ENC_KEY) can be absent.
+const REQUIRED = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'AUTH_SECRET'];
 
 // Which Vercel environments to target. Default: production only.
 const arg = (process.argv[2] || 'production').toLowerCase();
@@ -42,14 +53,16 @@ function loadEnvLocal() {
 }
 
 const env = loadEnvLocal();
-const missing = KEYS.filter((k) => !env[k]);
+const missing = REQUIRED.filter((k) => !env[k]);
 if (missing.length) {
-  console.error(`Missing in .env.local: ${missing.join(', ')}`);
+  console.error(`Missing required keys in .env.local: ${missing.join(', ')}`);
   process.exit(1);
 }
+// Only push keys that are actually set, so optional vars can be absent.
+const keysToPush = KEYS.filter((k) => env[k] != null && env[k] !== '');
 
 for (const target of TARGETS) {
-  for (const key of KEYS) {
+  for (const key of keysToPush) {
     // Remove any existing value first so re-runs don't error on "already exists".
     spawnSync('npx', ['vercel', 'env', 'rm', key, target, '-y'], {
       cwd: ROOT,

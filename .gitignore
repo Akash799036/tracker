@@ -10,3 +10,10 @@ src/constant/google_constant.js
 *-service-account*.json
 *.pem
 *.key
+
+# Dashboard user allow-list — holds password hashes, provided per-deployment.
+# Commit dashboard-users.example.json instead.
+config/dashboard-users.json
+
+.vercel
+.env*

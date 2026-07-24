@@ -20,7 +20,7 @@ import { encryptCredentials } from './loginCryptoClient';
 // requireAuth() on the mutating API routes, so a hidden button is a convenience,
 // not a security control.
 
-export type AuthUser = { username: string };
+export type AuthUser = { username: string; email?: string; selected?: boolean };
 
 type AuthState = {
   user: AuthUser | null;
@@ -30,6 +30,13 @@ type AuthState = {
   authConfigured: boolean;
   /** Convenience: a logged-in user may edit; everyone else is read-only. */
   canEdit: boolean;
+  /**
+   * Whether the user may see the Dashboard and internal pages. Mirrors the
+   * server `selected` flag. General users (not logged in) are not selected and
+   * only get the Live Projects form. This is UX only — the real gate is the
+   * middleware; hiding chrome here just avoids a content flash.
+   */
+  isSelected: boolean;
   login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -97,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ready,
     authConfigured,
     canEdit: user !== null,
+    isSelected: user !== null && user.selected !== false,
     login,
     logout,
     refresh,

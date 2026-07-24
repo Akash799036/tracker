@@ -1,0 +1,15 @@
+{
+  "_comment": "Allow-list of users who may access the full Dashboard and internal pages. Copy this file to dashboard-users.json (which is gitignored) and fill in real values. Everyone NOT in this list is a general user who can only use the Live Projects submission form. Generate a passwordHash with: node scripts/hash-password.mjs 'their-password' (use the scrypt:... value it prints).",
+  "users": [
+    {
+      "email": "person1@webart.technology",
+      "name": "Person One",
+      "passwordHash": "scrypt:32768:REPLACE_SALT_HEX:REPLACE_HASH_HEX"
+    },
+    {
+      "email": "person2@webart.technology",
+      "name": "Person Two",
+      "passwordHash": "scrypt:32768:REPLACE_SALT_HEX:REPLACE_HASH_HEX"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/useAuth';
 import { useToast } from '@/lib/toast';
 import {
@@ -16,14 +16,21 @@ import {
 // Every field the form can render, Email first (the built-in system field).
 const ALL_FIELDS: FormField[] = [EMAIL_FIELD, ...WEBSITE_DELIVERY_FIELDS];
 
+// Name of the hidden honeypot field. Must match HONEYPOT_FIELD on the server
+// (src/app/api/website-delivery-submit/route.ts). A real user never fills it.
+const HONEYPOT_FIELD = 'company_website_hp';
+
 export default function WebsiteDelivery2Page() {
   const toast = useToast();
-  const { ready: authReady } = useAuth();
+  const { ready: authReady, isSelected } = useAuth();
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Uncontrolled honeypot input — bots that auto-fill inputs will set it; humans
+  // never see it. Read on submit and sent to the server.
+  const honeypotRef = useRef<HTMLInputElement>(null);
 
   // The Add Project form is open to everyone (signed-out included), so the page
   // no longer redirects unauthenticated visitors to login. Note the submit
@@ -73,7 +80,7 @@ export default function WebsiteDelivery2Page() {
       const res = await fetch('/api/website-delivery-submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cells }),
+        body: JSON.stringify({ cells, [HONEYPOT_FIELD]: honeypotRef.current?.value ?? '' }),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
@@ -108,20 +115,13 @@ export default function WebsiteDelivery2Page() {
             </div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Thank you!</h1>
             <p className="mt-2 text-[13px] text-slate-600">
-              Your project has been submitted and added to Live Projects. The team
-              has been notified by email.
+              Your project has been submitted. The team has been notified.
             </p>
-            <div className="mt-6 flex items-center justify-center gap-2">
-              <Link
-                href="/live-projects"
-                className="inline-flex h-10 px-5 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 text-white text-[12.5px] font-semibold hover:from-emerald-700 hover:to-emerald-800 items-center shadow-md hover:shadow-lg transition-all"
-              >
-                View Live Projects
-              </Link>
+            <div className="mt-6 flex items-center justify-center">
               <button
                 type="button"
                 onClick={() => setSubmitted(false)}
-                className="inline-flex h-10 px-5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[12.5px] font-semibold hover:bg-slate-50 items-center shadow-sm transition-all"
+                className="inline-flex h-10 px-5 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 text-white text-[12.5px] font-semibold hover:from-emerald-700 hover:to-emerald-800 items-center shadow-md hover:shadow-lg transition-all"
               >
                 Submit another
               </button>
@@ -134,14 +134,30 @@ export default function WebsiteDelivery2Page() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-5 max-w-3xl mx-auto">
-      {/* Back to Live Projects */}
-      <Link
-        href="/live-projects"
-        className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 hover:text-slate-900 transition-colors"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        Back to Live Projects
-      </Link>
+      {/* Honeypot: hidden from real users (off-screen, not tab-reachable), so a
+          non-empty value on submit signals a bot. Not display:none — some bots
+          skip those; this is visually hidden but still in the DOM. */}
+      <input
+        ref={honeypotRef}
+        type="text"
+        name={HONEYPOT_FIELD}
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="absolute left-[-9999px] top-[-9999px] h-0 w-0 opacity-0"
+      />
+
+      {/* Back to Live Projects — only for selected users (general users can't
+          reach that page and shouldn't be offered a link to it). */}
+      {isSelected && (
+        <Link
+          href="/live-projects"
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Back to Live Projects
+        </Link>
+      )}
 
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white via-brand-50/40 to-white p-5 shadow-sm">

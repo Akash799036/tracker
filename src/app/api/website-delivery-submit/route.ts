@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
 import { badRequest, fail } from '@/lib/apiHelpers';
 import { insertUserRow } from '@/lib/sheetData';
 import { encryptField } from '@/lib/fieldCrypto';
@@ -34,6 +33,48 @@ const LIVE_PROJECTS_SHEET_TAB = 'Live Projects';
 // submitted key to its label / type / encrypted flag.
 const ALL_FIELDS: FormField[] = [EMAIL_FIELD, ...WEBSITE_DELIVERY_FIELDS];
 const FIELD_BY_NAME = new Map(ALL_FIELDS.map(f => [f.name, f]));
+
+// --- Abuse protection ------------------------------------------------------
+//
+// This endpoint is intentionally open to the public (general users submit the
+// Live Projects form without logging in), so it needs its own light abuse
+// guard rather than relying on auth.
+//
+// (a) Honeypot: the form renders a hidden field with this name that a human
+//     never fills. A bot that fills every input trips it — we then return a
+//     fake success (201) and save nothing, so the bot can't tell it was caught.
+export const HONEYPOT_FIELD = 'company_website_hp';
+
+// (b) Rate limit: a small in-memory sliding window per client IP. Single-instance
+//     app, so an in-process map is sufficient (it resets on redeploy, which is
+//     fine for spam mitigation — this is not a security boundary).
+const RATE_LIMIT_MAX = 5;              // submissions ...
+const RATE_LIMIT_WINDOW_MS = 60_000;   // ... per this window, per IP
+const rateHits = new Map<string, number[]>();
+
+function clientIp(req: Request): string {
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0].trim();
+  return req.headers.get('x-real-ip')?.trim() || 'unknown';
+}
+
+/** True if this IP has exceeded the allowed submissions in the current window. */
+function rateLimited(ip: string): boolean {
+  const now = Date.now();
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  const hits = (rateHits.get(ip) || []).filter(t => t > cutoff);
+  if (hits.length >= RATE_LIMIT_MAX) {
+    rateHits.set(ip, hits); // keep the pruned list so it eventually empties
+    return true;
+  }
+  hits.push(now);
+  rateHits.set(ip, hits);
+  // Opportunistically drop empty entries so the map doesn't grow unbounded.
+  if (rateHits.size > 5000) {
+    for (const [k, v] of rateHits) if (!v.some(t => t > cutoff)) rateHits.delete(k);
+  }
+  return false;
+}
 
 /** Coerce a cells payload to strings, ignoring anything that is not one. */
 function readCells(raw: unknown): Record<string, string> {
@@ -105,13 +146,31 @@ const CREDENTIAL_GROUPS: CredGroup[] = [
   { title: 'Hosting / cPanel',   urlName: 'hosting_cpanel_url', userName: 'hosting_cpanel_username', passName: 'hosting_cpanel_password' },
 ];
 
-// POST /api/website-delivery-submit  { cells }  (cells keyed by field name)
+// POST /api/website-delivery-submit  { cells, [honeypot] }  (cells keyed by field name)
+//
+// Public endpoint: general users submit the Live Projects form without logging
+// in. Protected by a honeypot field and a per-IP rate limit (see above) rather
+// than auth.
 export async function POST(req: Request) {
-  const auth = await requireAuth();
-  if (auth instanceof Response) return auth;
+  // Rate limit first, before doing any work.
+  if (rateLimited(clientIp(req))) {
+    return NextResponse.json(
+      { error: 'Too many submissions. Please wait a minute and try again.' },
+      { status: 429 }
+    );
+  }
 
   try {
     const body = await req.json().catch(() => ({}));
+
+    // Honeypot: a real user never fills this hidden field. If it's non-empty,
+    // pretend the submission succeeded but save nothing — the bot gets a 201 and
+    // no signal that it was blocked.
+    const honeypot = body?.[HONEYPOT_FIELD];
+    if (typeof honeypot === 'string' && honeypot.trim()) {
+      return NextResponse.json({ row: null, emailed: false, sheeted: false }, { status: 201 });
+    }
+
     const cells = readCells(body?.cells);
     if (!Object.keys(cells).length) return badRequest('cells is required');
 

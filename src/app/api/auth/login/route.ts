@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   authConfigured,
   sessionCookieFor,
-  verifyCredentials,
+  verifyLogin,
 } from '@/lib/auth';
 import { decryptLoginBlob } from '@/lib/loginCrypto';
 
@@ -55,19 +55,23 @@ export async function POST(req: Request) {
   }
 
   if (!username || !password) {
-    return NextResponse.json({ error: 'Username and password are required.' }, { status: 400 });
+    return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
   }
 
-  if (!verifyCredentials(username, password)) {
-    return NextResponse.json({ error: 'Invalid username or password.' }, { status: 401 });
+  // `username` carries the login identity — an email on the Dashboard allow-list,
+  // or the legacy admin username. verifyLogin resolves it to a full SessionUser
+  // (with email + selected flag) or null.
+  const user = verifyLogin(username, password);
+  if (!user) {
+    return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
   }
 
-  const cookie = sessionCookieFor({ username: username.trim() });
+  const cookie = sessionCookieFor(user);
   if (!cookie) {
     return NextResponse.json({ error: 'Login is not configured on the server.' }, { status: 503 });
   }
 
-  const res = NextResponse.json({ user: { username: username.trim() } });
+  const res = NextResponse.json({ user });
   res.cookies.set(cookie.name, cookie.value, cookie.options);
   return res;
 }

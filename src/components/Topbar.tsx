@@ -13,9 +13,9 @@ export default function Topbar({ onMenu }: { onMenu: () => void }) {
 
   const onLogout = async () => {
     await logout();
-    // Leave any edit-only page for the dashboard so the user isn't stranded on
-    // a now read-only form.
-    router.push('/');
+    // After logout the user is a general user again, so send them to the only
+    // page they can now see — the Live Projects form.
+    router.push('/website-delivery-2');
   };
 
   useEffect(() => {

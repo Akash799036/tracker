@@ -14,7 +14,7 @@ function LoginInner() {
   const params = useSearchParams();
   const from = params.get('from') || '/';
 
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ function LoginInner() {
     if (busy) return;
     setBusy(true);
     setError(null);
-    const res = await login(username, password);
+    const res = await login(email, password);
     setBusy(false);
     if (res.ok) {
       router.replace(from);
@@ -53,7 +53,7 @@ function LoginInner() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-none">Sign in</h1>
-                <p className="mt-1.5 text-[12px] text-slate-600">Log in to edit project data.</p>
+                <p className="mt-1.5 text-[12px] text-slate-600">Authorized users only — sign in to access the dashboard.</p>
               </div>
             </div>
 
@@ -72,11 +72,12 @@ function LoginInner() {
               )}
 
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Username</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Email</label>
                 <input
+                  type="email"
                   className="fld text-black"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                   autoComplete="username"
                   autoFocus
                   required
@@ -125,7 +126,7 @@ function LoginInner() {
         </div>
 
         <p className="mt-4 text-center text-[11.5px] text-slate-500">
-          You can browse the site without signing in — a login is only needed to make changes.
+          Access to the dashboard is restricted to authorized users.
         </p>
       </div>
     </div>
